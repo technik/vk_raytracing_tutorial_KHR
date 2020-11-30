@@ -30,6 +30,7 @@
 // at the top of imgui.cpp.
 
 #include <array>
+#include <iostream>
 #include <vulkan/vulkan.hpp>
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
@@ -87,7 +88,17 @@ static int const SAMPLE_HEIGHT = 720;
 //
 int main(int argc, char** argv)
 {
-  UNUSED(argc);
+    std::string fileName = "D:/repos/assets/glTF-Sample-Models/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf";
+    //std::string fileName = "D:/repos/assets/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
+    if(argc > 1)
+    {
+        fileName = argv[1];
+    }
+    else
+    {
+        std::cout << "No scene filename provided\n";
+        //return -1;
+    }
 
   // Setup GLFW window
   glfwSetErrorCallback(onErrorCallback);
@@ -175,7 +186,8 @@ int main(int argc, char** argv)
   helloVk.initGUI(0);  // Using sub-pass 0
 
   // Creation of the example
-  helloVk.loadScene(nvh::findFile("media/scenes/cornellBox.gltf", defaultSearchPaths));
+  //helloVk.loadScene(nvh::findFile("media/scenes/cornellBox.gltf", defaultSearchPaths));
+  helloVk.loadScene(nvh::findFile(fileName, defaultSearchPaths));
 
 
   helloVk.createOffscreenRender();

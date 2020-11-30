@@ -65,7 +65,6 @@ vec2 getTexCoord(uint index)
   return vp;
 }
 
-
 void main()
 {
   // Retrieve the Primitive mesh buffer information
@@ -89,14 +88,15 @@ void main()
   const vec3 pos1           = getVertex(triangleIndex.y);
   const vec3 pos2           = getVertex(triangleIndex.z);
   const vec3 position       = pos0 * barycentrics.x + pos1 * barycentrics.y + pos2 * barycentrics.z;
-  const vec3 world_position = vec3(gl_ObjectToWorldEXT * vec4(position, 1.0));
+  prd.world_position.xyz = vec3(gl_ObjectToWorldEXT * vec4(position, 1.0));
+  prd.world_position.w = gl_HitTEXT;
 
   // Normal
   const vec3 nrm0 = getNormal(triangleIndex.x);
   const vec3 nrm1 = getNormal(triangleIndex.y);
   const vec3 nrm2 = getNormal(triangleIndex.z);
   vec3 normal = normalize(nrm0 * barycentrics.x + nrm1 * barycentrics.y + nrm2 * barycentrics.z);
-  const vec3 world_normal = normalize(vec3(normal * gl_WorldToObjectEXT));
+  prd.world_normal = normalize(vec3(normal * gl_WorldToObjectEXT));
   const vec3 geom_normal  = normalize(cross(pos1 - pos0, pos2 - pos0));
 
   // TexCoord
@@ -105,58 +105,18 @@ void main()
   const vec2 uv2       = getTexCoord(triangleIndex.z);
   const vec2 texcoord0 = uv0 * barycentrics.x + uv1 * barycentrics.y + uv2 * barycentrics.z;
 
-  // https://en.wikipedia.org/wiki/Path_tracing
   // Material of the object
-  GltfMaterial mat       = materials[nonuniformEXT(matIndex)];
-  vec3         emittance = mat.emissiveFactor;
-
-  // Pick a random direction from here and keep going.
-  vec3 tangent, bitangent;
-  createCoordinateSystem(world_normal, tangent, bitangent);
-  vec3 rayOrigin    = world_position;
-  vec3 rayDirection = samplingHemisphere(prd.seed, tangent, bitangent, world_normal);
-
-  // Probability of the newRay (cosine distributed)
-  const float p = 1 / M_PI;
-
-  // Compute the BRDF for this ray (assuming Lambertian reflection)
-  float cos_theta = dot(rayDirection, world_normal);
-  vec3  albedo    = mat.pbrBaseColorFactor.xyz;
+  GltfMaterial mat = materials[nonuniformEXT(matIndex)];
+  prd.emittance = mat.emissiveFactor;
+  if(mat.emissiveTexture > -1)
+  {
+    uint txtId = mat.emissiveTexture;
+    prd.emittance *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
+  }
+  prd.albedo    = mat.pbrBaseColorFactor.xyz;
   if(mat.pbrBaseColorTexture > -1)
   {
     uint txtId = mat.pbrBaseColorTexture;
-    albedo *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
+    prd.albedo *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
   }
-  vec3 BRDF = albedo / M_PI;
-
-  prd.rayOrigin    = rayOrigin;
-  prd.rayDirection = rayDirection;
-  prd.hitValue     = emittance;
-  prd.weight       = BRDF * cos_theta / p;
-  return;
-
-  // Recursively trace reflected light sources.
-  if(prd.depth < 10)
-  {
-    prd.depth++;
-    float tMin  = 0.001;
-    float tMax  = 100000000.0;
-    uint  flags = gl_RayFlagsOpaqueEXT;
-    traceRayEXT(topLevelAS,    // acceleration structure
-                flags,         // rayFlags
-                0xFF,          // cullMask
-                0,             // sbtRecordOffset
-                0,             // sbtRecordStride
-                0,             // missIndex
-                rayOrigin,     // ray origin
-                tMin,          // ray min range
-                rayDirection,  // ray direction
-                tMax,          // ray max range
-                0              // payload (location = 0)
-    );
-  }
-  vec3 incoming = prd.hitValue;
-
-  // Apply the Rendering Equation here.
-  prd.hitValue = emittance + (BRDF * incoming * cos_theta / p);
 }

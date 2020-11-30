@@ -49,17 +49,10 @@ void main()
   float tMin     = 0.001;
   float tMax     = 10000.0;
 
-  prd.hitValue     = vec3(0);
-  prd.seed         = seed;
-  prd.depth        = 0;
-  prd.rayOrigin    = origin.xyz;
-  prd.rayDirection = direction.xyz;
-  prd.weight       = vec3(0);
+  vec3 lightModulation = vec3(1);
+  vec3 rayAccumLight = vec3(0);
 
-  vec3 curWeight = vec3(1);
-  vec3 hitValue  = vec3(0);
-
-  for(; prd.depth < 10; prd.depth++)
+  for(int rayDepth = 0; rayDepth < 10; rayDepth++)
   {
     traceRayEXT(topLevelAS,        // acceleration structure
                 rayFlags,          // rayFlags
@@ -67,15 +60,30 @@ void main()
                 0,                 // sbtRecordOffset
                 0,                 // sbtRecordStride
                 0,                 // missIndex
-                prd.rayOrigin,     // ray origin
+                origin.xyz,            // ray origin
                 tMin,              // ray min range
-                prd.rayDirection,  // ray direction
+                direction.xyz,         // ray direction
                 tMax,              // ray max range
                 0                  // payload (location = 0)
     );
 
-    hitValue += prd.hitValue * curWeight;
-    curWeight *= prd.weight;
+    rayAccumLight += lightModulation * prd.emittance;
+    if(prd.world_position.w < 0) // miss
+    {
+      break;
+    }
+
+    // Scatter direction
+    vec3 tangent, bitangent;
+    createCoordinateSystem(prd.world_normal, tangent, bitangent);
+    vec3 scatterDirection = samplingHemisphere(seed, tangent, bitangent, prd.world_normal);
+    const float ndl = max(0.0, dot(scatterDirection, prd.world_normal));
+
+    lightModulation *= ndl * prd.albedo / M_PI;
+
+    // new ray config
+    origin = vec4(prd.world_position.xyz, 1.0);
+    direction = vec4(scatterDirection, 0.0);
   }
 
   // Do accumulation over time
@@ -83,11 +91,11 @@ void main()
   {
     float a         = 1.0f / float(pushC.frame + 1);
     vec3  old_color = imageLoad(image, ivec2(gl_LaunchIDEXT.xy)).xyz;
-    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, hitValue, a), 1.f));
+    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, rayAccumLight, a), 1.f));
   }
   else
   {
     // First frame, replace the value in the buffer
-    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitValue, 1.f));
+    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(rayAccumLight, 1.f));
   }
 }

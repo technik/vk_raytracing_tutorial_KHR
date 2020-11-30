@@ -12,7 +12,9 @@ pushc;
 
 void main()
 {
-  vec2  uv    = outUV;
-  float gamma = 1. / 2.2;
-  fragColor   = pow(texture(noisyTxt, uv).rgba, vec4(gamma));
+	vec3 rawColor = texture(noisyTxt, outUV).rgb;
+	vec3 toneMapped = 1.0-exp(-rawColor);
+	float gamma = 1. / 2.2;
+	vec3 gammaCorrected = pow(toneMapped, vec3(gamma));
+	fragColor = vec4(gammaCorrected, 1.0);
 }

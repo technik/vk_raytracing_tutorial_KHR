@@ -810,7 +810,7 @@ void HelloVulkan::createRtPipeline()
       m_rtShaderGroups.size()));  // 1-raygen, n-miss, n-(hit[+anyhit+intersect])
   rayPipelineInfo.setPGroups(m_rtShaderGroups.data());
 
-  rayPipelineInfo.setMaxRecursionDepth(2);  // Ray depth
+  rayPipelineInfo.setMaxRecursionDepth(1);  // Ray depth
   rayPipelineInfo.setLayout(m_rtPipelineLayout);
   m_rtPipeline =
       static_cast<const vk::Pipeline&>(m_device.createRayTracingPipelineKHR({}, rayPipelineInfo));
@@ -869,7 +869,7 @@ void HelloVulkan::raytrace(const vk::CommandBuffer& cmdBuf, const nvmath::vec4f&
 
   m_debug.beginLabel(cmdBuf, "Ray trace");
   // Initializing push constant values
-  m_rtPushConstants.clearColor     = clearColor;
+  m_rtPushConstants.clearColor     = clearColor * m_pushConstant.lightIntensity;
   m_rtPushConstants.lightPosition  = m_pushConstant.lightPosition;
   m_rtPushConstants.lightIntensity = m_pushConstant.lightIntensity;
   m_rtPushConstants.lightType      = m_pushConstant.lightType;

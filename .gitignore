@@ -5,3 +5,4 @@
 /build
 *.spv
 /utilities.cmake
+/ray_tracing_gltf/log_vk_ray_tracing_gltf_KHR.txt
