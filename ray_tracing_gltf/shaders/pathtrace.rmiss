@@ -12,6 +12,8 @@ layout(push_constant) uniform Constants
 
 void main()
 {
-	prd.emittance = clearColor.xyz;
+	const vec3 up = vec3(0.5, 0.7, 1.0);
+	//prd.emittance = clearColor.xyz;
+	prd.emittance = mix(up, vec3(1.0), gl_WorldRayDirectionEXT.y) * clearColor.xyz;
   	prd.world_position.w = -1.0;
 }

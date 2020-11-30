@@ -34,7 +34,7 @@ pushC;
 
 float D_GGX(float ndh, float roughness) {
     float a = ndh * roughness;
-    float k = roughness / (1.0 - ndh * ndh + a * a);
+    float k = roughness / max(1e-4, 1.0 - ndh * ndh + a * a);
     return k * k * (1.0 / M_PI);
 }
 
@@ -93,6 +93,7 @@ void main()
     // Reconstruct PBR material
     vec3 specularColor = mix(vec3(0.04), prd.baseColor.xyz, prd.metallic);
     vec3 diffuseColor = prd.baseColor.xyz * (1.0-prd.metallic);
+    //diffuseColor = vec3(0.85);
 
     // Scatter ray direction
     vec3 tangent, bitangent;
@@ -125,6 +126,9 @@ void main()
     // new ray config
     origin = vec4(prd.world_position.xyz, 1.0);
     direction = vec4(scatterDirection, 0.0);
+
+    // Seed for next iteration
+    seed = tea(seed, int(clockARB()));
   }
 
   // Do accumulation over time
