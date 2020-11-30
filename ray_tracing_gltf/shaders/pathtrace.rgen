@@ -32,6 +32,23 @@ layout(push_constant) uniform Constants
 }
 pushC;
 
+float D_GGX(float ndh, float roughness) {
+    float a = ndh * roughness;
+    float k = roughness / (1.0 - ndh * ndh + a * a);
+    return k * k * (1.0 / M_PI);
+}
+
+float V_SmithGGXCorrelatedFast(float ndv, float ndl, float roughness) {
+    float a = roughness;
+    float GGXV = ndv * (ndv * (1.0 - a) + a);
+    float GGXL = ndl * (ndl * (1.0 - a) + a);
+    return 0.5 / (GGXV + GGXL);
+}
+
+vec3 F_Schlick(float u, vec3 f0) {
+    return f0 + (vec3(1.0) - f0) * pow(1.0 - u, 5.0);
+}
+
 void main()
 {
   // Initialize the random number
@@ -73,13 +90,37 @@ void main()
       break;
     }
 
-    // Scatter direction
+    // Reconstruct PBR material
+    vec3 specularColor = mix(vec3(0.04), prd.baseColor.xyz, prd.metallic);
+    vec3 diffuseColor = prd.baseColor.xyz * (1.0-prd.metallic);
+
+    // Scatter ray direction
     vec3 tangent, bitangent;
     createCoordinateSystem(prd.world_normal, tangent, bitangent);
     vec3 scatterDirection = samplingHemisphere(seed, tangent, bitangent, prd.world_normal);
     const float ndl = max(0.0, dot(scatterDirection, prd.world_normal));
 
-    lightModulation *= ndl * prd.albedo / M_PI;
+    // 50% probability for each path
+    if((seed & 1) > 0) // Diffuse
+    {
+      // 2 factor to compensate for 50% probability of hitting this light path
+      lightModulation *= 2.0 * ndl * diffuseColor / M_PI;
+    }
+    else // Specular
+    {
+      vec3 halfVector = normalize(scatterDirection - direction.xyz);
+      const float alpha = prd.roughness * prd.roughness;
+      const float ndh = max(0.0, dot(halfVector, prd.world_normal));
+      const float hdl = max(0.0, dot(halfVector, scatterDirection));
+      const float ndv = max(0.0, -dot(direction.xyz, prd.world_normal));
+      float D = D_GGX(ndh, alpha);
+      float V = V_SmithGGXCorrelatedFast(ndv, ndl, prd.roughness);
+      vec3 F = F_Schlick(hdl, specularColor);
+      vec3 Fr = (D*V)*F;
+
+      // 2 factor to compensate for 50% probability of hitting this light path
+      lightModulation *= 2.0 * Fr;
+    }
 
     // new ray config
     origin = vec4(prd.world_position.xyz, 1.0);

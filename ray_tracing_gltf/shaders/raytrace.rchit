@@ -168,5 +168,5 @@ void main()
     }
   }
 
-  prd.hitValue = vec3(lightIntensity * attenuation * (diffuse + specular));
+  prd.emittance = vec3(lightIntensity * attenuation * (diffuse + specular));
 }

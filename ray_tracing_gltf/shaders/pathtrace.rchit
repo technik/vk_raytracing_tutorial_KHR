@@ -107,16 +107,28 @@ void main()
 
   // Material of the object
   GltfMaterial mat = materials[nonuniformEXT(matIndex)];
+  // Emissive color
   prd.emittance = mat.emissiveFactor;
   if(mat.emissiveTexture > -1)
   {
     uint txtId = mat.emissiveTexture;
     prd.emittance *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
   }
-  prd.albedo    = mat.pbrBaseColorFactor.xyz;
+  // baseColor
+  prd.baseColor    = mat.pbrBaseColorFactor;
   if(mat.pbrBaseColorTexture > -1)
   {
     uint txtId = mat.pbrBaseColorTexture;
-    prd.albedo *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
+    prd.baseColor *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0);
+  }
+  // Metallic & Roughness
+  prd.metallic = mat.pbrMetallicFactor;
+  prd.roughness = mat.pbrRoughnessFactor;
+  if(mat.pbrMetallicRoughnessTexture > -1)
+  {
+    uint txtId = mat.pbrMetallicRoughnessTexture;
+    vec2 metallicRoughness = texture(texturesMap[nonuniformEXT(txtId)], texcoord0).yz;
+    prd.metallic *= metallicRoughness.x;
+    prd.roughness *= metallicRoughness.y;
   }
 }

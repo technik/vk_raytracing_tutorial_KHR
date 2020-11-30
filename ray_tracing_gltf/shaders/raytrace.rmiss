@@ -12,5 +12,5 @@ layout(push_constant) uniform Constants
 
 void main()
 {
-  prd.hitValue = clearColor.xyz * 0.8;
+  prd.emittance = clearColor.xyz * 0.8;
 }
