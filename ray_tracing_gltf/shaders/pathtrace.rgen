@@ -29,6 +29,8 @@ layout(push_constant) uniform Constants
   float lightIntensity;
   int   lightType;
   int   frame;
+  int   maxBounces;
+  int   firstBounce;
 }
 pushC;
 
@@ -69,7 +71,7 @@ void main()
   vec3 lightModulation = vec3(1);
   vec3 rayAccumLight = vec3(0);
 
-  for(int rayDepth = 0; rayDepth < 10; rayDepth++)
+  for(int rayDepth = 0; rayDepth < pushC.maxBounces+1; rayDepth++)
   {
     traceRayEXT(topLevelAS,        // acceleration structure
                 rayFlags,          // rayFlags
@@ -84,7 +86,11 @@ void main()
                 0                  // payload (location = 0)
     );
 
-    rayAccumLight += lightModulation * prd.emittance;
+    if(rayDepth >= pushC.firstBounce ||
+      (rayDepth == 0 && prd.world_position.w < 0)) // Always show the background
+    {
+      rayAccumLight += lightModulation * prd.emittance;
+    }
     if(prd.world_position.w < 0) // miss
     {
       break;

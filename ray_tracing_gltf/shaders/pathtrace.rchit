@@ -35,6 +35,10 @@ layout(push_constant) uniform Constants
   vec3  lightPosition;
   float lightIntensity;
   int   lightType;
+  int   frame;
+  int   maxBounces;
+  int   firstBounce;
+  int   renderFlags;
 }
 pushC;
 
@@ -120,6 +124,11 @@ void main()
   {
     uint txtId = mat.pbrBaseColorTexture;
     prd.baseColor *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0);
+  }
+  if((pushC.renderFlags & FLAG_OVERRIDE_ALBEDO_85) > 0)
+  {
+    prd.baseColor.xyz = vec3(0.85);
+    prd.emittance.xyz = vec3(0.0);
   }
   // Metallic & Roughness
   prd.metallic = mat.pbrMetallicFactor;

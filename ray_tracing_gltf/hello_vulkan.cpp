@@ -59,6 +59,33 @@ struct CameraMatrices
 };
 
 //--------------------------------------------------------------------------------------------------
+void HelloVulkan::renderUI()
+{
+    bool mustClean = false;
+    mustClean |= ImGui::SliderFloat3("Light Position", &m_pushConstant.lightPosition.x, -20.f, 20.f);
+    mustClean |= ImGui::SliderFloat("Light Intensity", &m_pushConstant.lightIntensity, 0.f, 100.f);
+    if (ImGui::CollapsingHeader("Reference path tracer"))
+    {
+        mustClean |= ImGui::InputInt("Max bounces", &m_rtPushConstants.maxBounces, 1);
+        mustClean |= ImGui::InputInt("First bounce", &m_rtPushConstants.firstBounce, 1);
+        m_rtPushConstants.maxBounces = std::min(20, std::max(0, m_rtPushConstants.maxBounces));
+        m_rtPushConstants.firstBounce = std::min(20, std::max(0, m_rtPushConstants.firstBounce));
+        // Render flags
+        bool overrideAlbedo = m_rtPushConstants.renderFlags & (1 << 1);
+        mustClean |= ImGui::Checkbox("Albedo 0.85", &overrideAlbedo);
+        bool greyFurnace = m_rtPushConstants.renderFlags & (1 << 3);
+        mustClean |= ImGui::Checkbox("Furnace test", &greyFurnace);
+        m_rtPushConstants.renderFlags =
+            (overrideAlbedo ? (1 << 1) : 0) |
+            (greyFurnace ? (1 << 3) : 0);
+    }
+    if (mustClean)
+    {
+        resetFrame();
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
 // Keep the handle on the device
 // Initialize the tool to do all our allocations: buffers, images
 //

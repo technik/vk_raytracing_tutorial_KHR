@@ -47,20 +47,21 @@
 class HelloVulkan : public nvvk::AppBase
 {
 public:
-  void setup(const vk::Instance&       instance,
-             const vk::Device&         device,
-             const vk::PhysicalDevice& physicalDevice,
-             uint32_t                  queueFamily) override;
-  void createDescriptorSetLayout();
-  void createGraphicsPipeline();
-  void loadScene(const std::string& filename);
-  void updateDescriptorSet();
-  void createUniformBuffer();
-  void createTextureImages(const vk::CommandBuffer& cmdBuf, tinygltf::Model& gltfModel);
-  void updateUniformBuffer();
-  void onResize(int /*w*/, int /*h*/) override;
-  void destroyResources();
-  void rasterize(const vk::CommandBuffer& cmdBuff);
+    void renderUI();
+    void setup(const vk::Instance&       instance,
+                const vk::Device&         device,
+                const vk::PhysicalDevice& physicalDevice,
+                uint32_t                  queueFamily) override;
+    void createDescriptorSetLayout();
+    void createGraphicsPipeline();
+    void loadScene(const std::string& filename);
+    void updateDescriptorSet();
+    void createUniformBuffer();
+    void createTextureImages(const vk::CommandBuffer& cmdBuf, tinygltf::Model& gltfModel);
+    void updateUniformBuffer();
+    void onResize(int /*w*/, int /*h*/) override;
+    void destroyResources();
+    void rasterize(const vk::CommandBuffer& cmdBuff);
 
   // Structure used for retrieving the primitive information in the closest hit
   // The gl_InstanceCustomIndexNV
@@ -87,7 +88,7 @@ public:
     nvmath::vec3f lightPosition{0.f, 4.5f, 0.f};
     int           instanceId{0};  // To retrieve the transformation matrix
     float         lightIntensity{10.f};
-    int           lightType{0};  // 0: point, 1: infinite
+    int           lightType{1};  // 0: point, 1: infinite
     int           materialId{0};
   };
   ObjPushConstant m_pushConstant;
@@ -151,12 +152,15 @@ public:
   vk::Pipeline                                        m_rtPipeline;
   nvvk::Buffer                                        m_rtSBTBuffer;
 
-  struct RtPushConstant
-  {
-    nvmath::vec4f clearColor;
-    nvmath::vec3f lightPosition;
-    float         lightIntensity;
-    int           lightType;
-    int           frame{0};
-  } m_rtPushConstants;
+    struct RtPushConstant
+    {
+        nvmath::vec4f clearColor;
+        nvmath::vec3f lightPosition;
+        float         lightIntensity;
+        int           lightType;
+        int           frame{ 0 };
+        int           maxBounces {4};
+        int           firstBounce {0};
+        int           renderFlags{ 0 };
+    } m_rtPushConstants;
 };
