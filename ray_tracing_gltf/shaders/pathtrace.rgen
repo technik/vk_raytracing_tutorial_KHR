@@ -31,6 +31,7 @@ layout(push_constant) uniform Constants
   int   frame;
   int   maxBounces;
   int   firstBounce;
+  int   renderFlags;
 }
 pushC;
 
@@ -110,11 +111,16 @@ void main()
     // 50% probability for each path
     if((seed & 1) > 0) // Diffuse
     {
+      if(rayDepth == 0 && (pushC.renderFlags & FLAG_SPECULAR_ONLY) > 0)
+        break; // Ignore diffuse path
       // 2 factor to compensate for 50% probability of hitting this light path
       lightModulation *= 2.0 * ndl * diffuseColor / M_PI;
     }
     else // Specular
     {
+      if(rayDepth == 0 && (pushC.renderFlags & FLAG_DIFFUSE_ONLY) > 0)
+        break; // Ignore specular path
+
       vec3 halfVector = normalize(scatterDirection - direction.xyz);
       const float alpha = prd.roughness * prd.roughness;
       const float ndh = max(0.0, dot(halfVector, prd.world_normal));

@@ -75,9 +75,15 @@ void HelloVulkan::renderUI()
         mustClean |= ImGui::Checkbox("Albedo 0.85", &overrideAlbedo);
         bool greyFurnace = m_rtPushConstants.renderFlags & (1 << 3);
         mustClean |= ImGui::Checkbox("Furnace test", &greyFurnace);
+        bool diffuseOnly = m_rtPushConstants.renderFlags & (1 << 4);
+        mustClean |= ImGui::Checkbox("Ignore specular", &diffuseOnly);
+        bool specularOnly = m_rtPushConstants.renderFlags & (1 << 5);
+        mustClean |= ImGui::Checkbox("Ignore diffuse", &specularOnly);
         m_rtPushConstants.renderFlags =
             (overrideAlbedo ? (1 << 1) : 0) |
-            (greyFurnace ? (1 << 3) : 0);
+            (greyFurnace ? (1 << 3) : 0) |
+            (diffuseOnly ? (1 << 4) : 0) |
+            (specularOnly ? (1 << 5) : 0);
     }
     if (mustClean)
     {
