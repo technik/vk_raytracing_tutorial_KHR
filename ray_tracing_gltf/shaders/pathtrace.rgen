@@ -140,7 +140,7 @@ void main()
     direction = vec4(scatterDirection, 0.0);
 
     // Seed for next iteration
-    seed = tea(seed, int(clockARB()));
+    seed = lcg(seed);
   }
 
   // Do accumulation over time
