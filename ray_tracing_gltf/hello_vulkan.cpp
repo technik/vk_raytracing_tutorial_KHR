@@ -62,6 +62,7 @@ struct CameraMatrices
 void HelloVulkan::renderUI()
 {
     bool mustClean = false;
+    ImGui::Checkbox("Accumulate", &m_accumulate);
     mustClean |= ImGui::SliderFloat3("Light Position", &m_pushConstant.lightPosition.x, -20.f, 20.f);
     mustClean |= ImGui::SliderFloat("Light Intensity", &m_pushConstant.lightIntensity, 0.f, 100.f);
     if (ImGui::CollapsingHeader("Reference path tracer"))
@@ -85,7 +86,7 @@ void HelloVulkan::renderUI()
             (diffuseOnly ? (1 << 4) : 0) |
             (specularOnly ? (1 << 5) : 0);
     }
-    if (mustClean)
+    if (mustClean || !m_accumulate)
     {
         resetFrame();
     }

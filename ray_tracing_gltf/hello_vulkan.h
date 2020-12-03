@@ -163,4 +163,7 @@ public:
         int           firstBounce {0};
         int           renderFlags{ 0 };
     } m_rtPushConstants;
+
+private:
+    bool m_accumulate{true};
 };
