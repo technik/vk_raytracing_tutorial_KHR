@@ -80,11 +80,14 @@ void HelloVulkan::renderUI()
         mustClean |= ImGui::Checkbox("Ignore specular", &diffuseOnly);
         bool specularOnly = m_rtPushConstants.renderFlags & (1 << 5);
         mustClean |= ImGui::Checkbox("Ignore diffuse", &specularOnly);
+        bool importanceSampling = m_rtPushConstants.renderFlags & (1 << 6);
+        mustClean |= ImGui::Checkbox("Importance sampling", &importanceSampling);
         m_rtPushConstants.renderFlags =
             (overrideAlbedo ? (1 << 1) : 0) |
             (greyFurnace ? (1 << 3) : 0) |
             (diffuseOnly ? (1 << 4) : 0) |
-            (specularOnly ? (1 << 5) : 0);
+            (specularOnly ? (1 << 5) : 0) |
+            (importanceSampling ? (1 << 6) : 0);
     }
     if (mustClean || !m_accumulate)
     {

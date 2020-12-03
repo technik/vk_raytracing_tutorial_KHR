@@ -97,32 +97,51 @@ void main()
       break;
     }
 
+    vec3 scatterDirection;
+
     // Reconstruct PBR material
     vec3 specularColor = mix(vec3(0.04), prd.baseColor.xyz, prd.metallic);
     vec3 diffuseColor = prd.baseColor.xyz * (1.0-prd.metallic);
     //diffuseColor = vec3(0.85);
-
-    // Scatter ray direction
-    vec3 tangent, bitangent;
-    createCoordinateSystem(prd.world_normal, tangent, bitangent);
-    vec3 scatterDirection = samplingHemisphere(seed, tangent, bitangent, prd.world_normal);
-    const float ndl = max(0.0, dot(scatterDirection, prd.world_normal));
 
     // 50% probability for each path
     if((seed & 1) > 0) // Diffuse
     {
       if(rayDepth == 0 && (pushC.renderFlags & FLAG_SPECULAR_ONLY) > 0)
         break; // Ignore diffuse path
-      // 2 factor to compensate for 50% probability of hitting this light path
-      lightModulation *= 2.0 * ndl * diffuseColor / M_PI;
+
+      // Scatter ray direction
+      if((pushC.renderFlags & FLAG_IMPORTANCE_SAMPLING) > 0) // Importance sampling
+      {
+        vec2 seed2 = vec2(rnd(seed), rnd(seed));
+        scatterDirection = normalize(randomUnitVector(seed2)*0.999 + prd.world_normal);
+        const float ndl = max(0.0, dot(scatterDirection, prd.world_normal));
+        // 2 factor to compensate for 50% probability of hitting this light path
+        lightModulation *= 2.0 * diffuseColor / M_PI;
+      }
+      else // Uniform sampling
+      {
+        vec3 tangent, bitangent;
+        createCoordinateSystem(prd.world_normal, tangent, bitangent);
+        scatterDirection = samplingHemisphere(seed, tangent, bitangent, prd.world_normal);
+        const float ndl = max(0.0, dot(scatterDirection, prd.world_normal));
+        // 2 factor to compensate for 50% probability of hitting this light path
+        lightModulation *= 2.0 * ndl * diffuseColor / M_PI;
+      }
     }
     else // Specular
     {
       if(rayDepth == 0 && (pushC.renderFlags & FLAG_DIFFUSE_ONLY) > 0)
         break; // Ignore specular path
 
+      // Scatter ray direction
+      vec3 tangent, bitangent;
+      createCoordinateSystem(prd.world_normal, tangent, bitangent);
+      scatterDirection = samplingHemisphere(seed, tangent, bitangent, prd.world_normal);
+
       vec3 halfVector = normalize(scatterDirection - direction.xyz);
       const float alpha = prd.roughness * prd.roughness;
+      const float ndl = max(0.0, dot(scatterDirection, prd.world_normal));
       const float ndh = max(0.0, dot(halfVector, prd.world_normal));
       const float hdl = max(0.0, dot(halfVector, scatterDirection));
       const float ndv = max(0.0, -dot(direction.xyz, prd.world_normal));
@@ -138,9 +157,6 @@ void main()
     // new ray config
     origin = vec4(prd.world_position.xyz, 1.0);
     direction = vec4(scatterDirection, 0.0);
-
-    // Seed for next iteration
-    seed = lcg(seed);
   }
 
   // Do accumulation over time

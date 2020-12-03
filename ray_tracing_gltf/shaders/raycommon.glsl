@@ -18,3 +18,4 @@ struct hitPayload
 #define FLAG_GREY_FURNACE (1<<3)
 #define FLAG_DIFFUSE_ONLY (1<<4)
 #define FLAG_SPECULAR_ONLY (1<<5)
+#define FLAG_IMPORTANCE_SAMPLING (1<<6)

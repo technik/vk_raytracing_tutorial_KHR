@@ -1,6 +1,11 @@
 // Generate a random unsigned int from two unsigned int values, using 16 pairs
 // of rounds of the Tiny Encryption Algorithm. See Zafar, Olano, and Curtis,
 // "GPU Random Numbers via the Tiny Encryption Algorithm"
+
+const float PI = 3.14159265;
+#define M_PI PI
+const float TwoPi = 6.2831852436065673828125f;
+
 uint tea(uint val0, uint val1)
 {
   uint v0 = val0;
@@ -33,7 +38,6 @@ float rnd(inout uint prev)
   return (float(lcg(prev)) / float(0x01000000));
 }
 
-
 //-------------------------------------------------------------------------------------------------
 // Sampling
 //-------------------------------------------------------------------------------------------------
@@ -41,7 +45,6 @@ float rnd(inout uint prev)
 // Randomly sampling around +Z
 vec3 samplingHemisphere(inout uint seed, in vec3 x, in vec3 y, in vec3 z)
 {
-#define M_PI 3.141592
 
   float r1 = rnd(seed);
   float r2 = rnd(seed);
@@ -53,12 +56,24 @@ vec3 samplingHemisphere(inout uint seed, in vec3 x, in vec3 y, in vec3 z)
   return direction;
 }
 
-// Return the tangent and binormal from the incoming normal
-void createCoordinateSystem(in vec3 N, out vec3 Nt, out vec3 Nb)
+// Pixar's method for orthonormal basis generation
+void createCoordinateSystem(in vec3 n, out vec3 b1, out vec3 b2)
 {
-  if(abs(N.x) > abs(N.y))
-    Nt = vec3(N.z, 0, -N.x) / sqrt(N.x * N.x + N.z * N.z);
-  else
-    Nt = vec3(0, -N.z, N.y) / sqrt(N.y * N.y + N.z * N.z);
-  Nb = cross(N, Nt);
+  float sign = n.z > 0.0 ? 1.0 : -1.0;
+  const float a = -1.0f / (sign + n.z);
+  const float b = n.x * n.y * a;
+  b1 = vec3(1.0f + sign * n.x * n.x * a, sign * b, -sign * n.x);
+  b2 = vec3(b, sign + n.y * n.y * a, -n.y);
+}
+
+vec3 randomUnitVector(in vec2 seed)
+{
+  float theta = TwoPi*seed.x;
+  float z = 2*seed.y-1;
+  float horRad = sqrt(1-z*z);
+  return vec3(
+  cos(theta)*horRad,
+  z,
+  sin(theta)*horRad
+  );
 }
