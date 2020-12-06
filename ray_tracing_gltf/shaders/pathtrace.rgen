@@ -103,6 +103,7 @@ void main()
     vec3 hitNormal = prd.world_normal;
     origin.xyz = prd.world_position.xyz + hitNormal*1e-4*prd.world_position.w;
     vec3 L;
+    const float alpha = prd.roughness * prd.roughness;
 
     // Reconstruct PBR material
     vec3 specularColor = mix(vec3(0.04), prd.baseColor.xyz, prd.metallic);
@@ -128,7 +129,6 @@ void main()
             break; // Ignore specular path
 
         // Scatter ray direction
-        const float alpha = prd.roughness * prd.roughness;
         const vec3 tsH = samplingGGXHemisphere(seed, alpha);
         const vec3 H = tangent*tsH.x + bitangent*tsH.y + hitNormal*tsH.z;
         L = reflect(direction.xyz, H);
@@ -156,7 +156,7 @@ void main()
     }
 
     // Explicitly sample sun light
-    /*float ndl = dot(pushC.lightPosition, prd.world_normal);
+    float ndl = dot(pushC.lightPosition, hitNormal);
     if(ndl > 0)
     {
       traceRayEXT(topLevelAS,        // acceleration structure
@@ -173,22 +173,21 @@ void main()
       );
       if(prd.world_position.w < 0) // miss, no obstacle
       {
-        vec3 halfVector = normalize(pushC.lightPosition.xyz - direction.xyz);
-        const float alpha = prd.roughness * prd.roughness;
-        const float ndh = max(0.0, dot(halfVector, prd.world_normal));
-        const float hdl = max(0.0, dot(halfVector, pushC.lightPosition.xyz));
-        const float ndv = max(0.0, -dot(direction.xyz, prd.world_normal));
+        vec3 H = normalize(pushC.lightPosition.xyz - direction.xyz);
+        const float ndh = max(0.0, dot(H, hitNormal));
+        const float hdl = max(0.0, dot(H, pushC.lightPosition));
+        const float ndv = max(1e-4, -dot(direction.xyz, hitNormal));
         float D = D_GGX(ndh, alpha);
-        float V = SmithGGX_G2Approx(ndv, ndl, alpha);
+        float G = SmithGGX_G2Approx(ndv, ndl, alpha);
         vec3 F = F_Schlick(hdl, specularColor);
-        vec3 Fr = (D*V)*F;
+        vec3 Fr = min(1.0, D*G)*F;
 
         if(rayDepth >= pushC.firstBounce)
         {
           rayAccumLight += lightModulation * (diffuseColor / M_PI + Fr) * pushC.sunIntensity * ndl;
         }
       }
-    }*/
+    }
 
     direction.xyz = L;
     lightModulation *= brdf;
