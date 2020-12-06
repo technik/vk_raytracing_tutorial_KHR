@@ -156,12 +156,12 @@ public:
     {
         nvmath::vec4f clearColor;
         nvmath::vec3f lightPosition;
-        float         lightIntensity;
-        int           lightType;
+        float         skyIntensity{4.f};
+        float         sunIntensity{10.f};
         int           frame{ 0 };
         int           maxBounces {4};
         int           firstBounce {0};
-        int           renderFlags{ 0 };
+        int           renderFlags{0};
     } m_rtPushConstants;
 
 private:

@@ -26,8 +26,8 @@ layout(push_constant) uniform Constants
 {
   vec4  clearColor;
   vec3  lightPosition;
-  float lightIntensity;
-  int   lightType;
+  float skyIntensity;
+  float sunIntensity;
   int   frame;
   int   maxBounces;
   int   firstBounce;
@@ -35,21 +35,22 @@ layout(push_constant) uniform Constants
 }
 pushC;
 
-float D_GGX(float ndh, float roughness) {
-    float a = ndh * roughness;
-    float k = roughness / max(1e-4, 1.0 - ndh * ndh + a * a);
-    return k * k * (1.0 / M_PI);
+float D_GGX(float ndh, float a) {
+    float k = a / max(1e-4, (ndh * ndh)*(a*a-1) + 1);
+    return k * k / M_PI;
 }
 
-float V_SmithGGXCorrelatedFast(float ndv, float ndl, float roughness) {
-    float a = roughness;
-    float GGXV = ndv * (ndv * (1.0 - a) + a);
-    float GGXL = ndl * (ndl * (1.0 - a) + a);
-    return 0.5 / (GGXV + GGXL);
+// Earl Hammon's Diffuse GGX talk
+// Predivided by 4*ndl*ndv
+float SmithGGX_G2Approx(float ndv, float ndl, float a)
+{
+    return 0.5 / mix(2*ndl*ndv, ndl+ndv, a);
 }
 
-vec3 F_Schlick(float u, vec3 f0) {
-    return f0 + (vec3(1.0) - f0) * pow(1.0 - u, 5.0);
+vec3 F_Schlick(float hdl, vec3 f0) {
+    float p = (1-hdl);
+    float p2 = p*p;
+    return f0 + (1.0 - f0) * p*p2*p2;
 }
 
 void main()
@@ -72,7 +73,8 @@ void main()
   vec3 lightModulation = vec3(1);
   vec3 rayAccumLight = vec3(0);
 
-  for(int rayDepth = 0; rayDepth < pushC.maxBounces+1; rayDepth++)
+  for(int rayDepth = 0; rayDepth <= pushC.maxBounces; rayDepth++)
+  //for(int rayDepth = 0; rayDepth < 1; rayDepth++)
   {
     traceRayEXT(topLevelAS,        // acceleration structure
                 rayFlags,          // rayFlags
@@ -97,66 +99,99 @@ void main()
       break;
     }
 
-    vec3 scatterDirection;
+    // new ray config for next frame
+    vec3 hitNormal = prd.world_normal;
+    origin.xyz = prd.world_position.xyz + hitNormal*1e-4*prd.world_position.w;
+    vec3 L;
 
     // Reconstruct PBR material
     vec3 specularColor = mix(vec3(0.04), prd.baseColor.xyz, prd.metallic);
     vec3 diffuseColor = prd.baseColor.xyz * (1.0-prd.metallic);
-    //diffuseColor = vec3(0.85);
 
     // 50% probability for each path
+    vec3 brdf = vec3(1.0);
+    vec3 tangent, bitangent;
+    createCoordinateSystem(hitNormal, tangent, bitangent);
     if((seed & 1) > 0) // Diffuse
     {
-      if(rayDepth == 0 && (pushC.renderFlags & FLAG_SPECULAR_ONLY) > 0)
-        break; // Ignore diffuse path
+      	if(rayDepth == 0 && (pushC.renderFlags & FLAG_SPECULAR_ONLY) > 0)
+       		break; // Ignore diffuse path
 
-      // Scatter ray direction
-      if((pushC.renderFlags & FLAG_IMPORTANCE_SAMPLING) > 0) // Importance sampling
-      {
-        vec2 seed2 = vec2(rnd(seed), rnd(seed));
-        scatterDirection = normalize(randomUnitVector(seed2)*0.999 + prd.world_normal);
-        const float ndl = max(0.0, dot(scatterDirection, prd.world_normal));
-        // 2 factor to compensate for 50% probability of hitting this light path
-        lightModulation *= 2.0 * diffuseColor / M_PI;
-      }
-      else // Uniform sampling
-      {
-        vec3 tangent, bitangent;
-        createCoordinateSystem(prd.world_normal, tangent, bitangent);
-        scatterDirection = samplingHemisphere(seed, tangent, bitangent, prd.world_normal);
-        const float ndl = max(0.0, dot(scatterDirection, prd.world_normal));
-        // 2 factor to compensate for 50% probability of hitting this light path
-        lightModulation *= 2.0 * ndl * diffuseColor / M_PI;
-      }
+		L = samplingCosHemisphere(seed, tangent, bitangent, hitNormal);
+		const float ndl = max(0.0, dot(L, hitNormal));
+		// 2 factor to compensate for 50% probability of hitting this light path
+		brdf = 2.0 * diffuseColor / M_PI;
     }
     else // Specular
     {
-      if(rayDepth == 0 && (pushC.renderFlags & FLAG_DIFFUSE_ONLY) > 0)
-        break; // Ignore specular path
+        if(rayDepth == 0 && (pushC.renderFlags & FLAG_DIFFUSE_ONLY) > 0)
+            break; // Ignore specular path
 
-      // Scatter ray direction
-      vec3 tangent, bitangent;
-      createCoordinateSystem(prd.world_normal, tangent, bitangent);
-      scatterDirection = samplingHemisphere(seed, tangent, bitangent, prd.world_normal);
+        // Scatter ray direction
+        const float alpha = prd.roughness * prd.roughness;
+        const vec3 tsH = samplingGGXHemisphere(seed, alpha);
+        const vec3 H = tangent*tsH.x + bitangent*tsH.y + hitNormal*tsH.z;
+        L = reflect(direction.xyz, H);
 
-      vec3 halfVector = normalize(scatterDirection - direction.xyz);
-      const float alpha = prd.roughness * prd.roughness;
-      const float ndl = max(0.0, dot(scatterDirection, prd.world_normal));
-      const float ndh = max(0.0, dot(halfVector, prd.world_normal));
-      const float hdl = max(0.0, dot(halfVector, scatterDirection));
-      const float ndv = max(0.0, -dot(direction.xyz, prd.world_normal));
-      float D = D_GGX(ndh, alpha);
-      float V = V_SmithGGXCorrelatedFast(ndv, ndl, prd.roughness);
-      vec3 F = F_Schlick(hdl, specularColor);
-      vec3 Fr = (D*V)*F;
+        float ndl = dot(L, hitNormal);
+        if(ndl > 0)
+        {
+            ndl = max(1e-4, ndl);
+            const float ndh = max(1e-3, tsH.z);
+            const float vdh = max(0.0, -dot(H, direction.xyz));
+            const float ndv = max(1e-4, -dot(hitNormal, direction.xyz));
+            
+            float G = SmithGGX_G2Approx(ndv, ndl, alpha);
+            float s = min(1.0, G*ndl/ndh);
+            vec3 F = F_Schlick(vdh, specularColor);
+            vec3 Fr = s*F;
 
-      // 2 factor to compensate for 50% probability of hitting this light path
-      lightModulation *= 2.0 * Fr;
+            // 2 factor to compensate for 50% probability of hitting this light path
+            brdf = 2*Fr;
+        }
+        else
+        {
+            rayDepth = pushC.maxBounces+1; // Should really do multiple scattering here.
+        }      
     }
 
-    // new ray config
-    origin = vec4(prd.world_position.xyz, 1.0);
-    direction = vec4(scatterDirection, 0.0);
+    // Explicitly sample sun light
+    /*float ndl = dot(pushC.lightPosition, prd.world_normal);
+    if(ndl > 0)
+    {
+      traceRayEXT(topLevelAS,        // acceleration structure
+              rayFlags,          // rayFlags
+              0xFF,              // cullMask
+              0,                 // sbtRecordOffset
+              0,                 // sbtRecordStride
+              0,                 // missIndex
+              origin.xyz,            // ray origin
+              tMin,              // ray min range
+              pushC.lightPosition.xyz, // ray direction
+              tMax,              // ray max range
+              0                  // payload (location = 0)
+      );
+      if(prd.world_position.w < 0) // miss, no obstacle
+      {
+        vec3 halfVector = normalize(pushC.lightPosition.xyz - direction.xyz);
+        const float alpha = prd.roughness * prd.roughness;
+        const float ndh = max(0.0, dot(halfVector, prd.world_normal));
+        const float hdl = max(0.0, dot(halfVector, pushC.lightPosition.xyz));
+        const float ndv = max(0.0, -dot(direction.xyz, prd.world_normal));
+        float D = D_GGX(ndh, alpha);
+        float V = SmithGGX_G2Approx(ndv, ndl, alpha);
+        vec3 F = F_Schlick(hdl, specularColor);
+        vec3 Fr = (D*V)*F;
+
+        if(rayDepth >= pushC.firstBounce)
+        {
+          rayAccumLight += lightModulation * (diffuseColor / M_PI + Fr) * pushC.sunIntensity * ndl;
+        }
+      }
+    }*/
+
+    direction.xyz = L;
+    lightModulation *= brdf;
   }
 
   // Do accumulation over time

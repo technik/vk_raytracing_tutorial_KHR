@@ -33,8 +33,8 @@ layout(push_constant) uniform Constants
 {
   vec4  clearColor;
   vec3  lightPosition;
-  float lightIntensity;
-  int   lightType;
+  float skyIntensity;
+  float sunIntensity;
   int   frame;
   int   maxBounces;
   int   firstBounce;
@@ -99,9 +99,8 @@ void main()
   const vec3 nrm0 = getNormal(triangleIndex.x);
   const vec3 nrm1 = getNormal(triangleIndex.y);
   const vec3 nrm2 = getNormal(triangleIndex.z);
-  vec3 normal = normalize(nrm0 * barycentrics.x + nrm1 * barycentrics.y + nrm2 * barycentrics.z);
-  prd.world_normal = normalize(vec3(normal * gl_WorldToObjectEXT));
-  const vec3 geom_normal  = normalize(cross(pos1 - pos0, pos2 - pos0));
+  vec3 tsNormal = nrm0 * barycentrics.x + nrm1 * barycentrics.y + nrm2 * barycentrics.z;
+  prd.world_normal = normalize(vec3(tsNormal * gl_WorldToObjectEXT));
 
   // TexCoord
   const vec2 uv0       = getTexCoord(triangleIndex.x);
@@ -136,8 +135,8 @@ void main()
   if(mat.pbrMetallicRoughnessTexture > -1)
   {
     uint txtId = mat.pbrMetallicRoughnessTexture;
-    vec2 metallicRoughness = texture(texturesMap[nonuniformEXT(txtId)], texcoord0).yz;
-    prd.metallic *= metallicRoughness.x;
-    prd.roughness *= metallicRoughness.y;
+    vec3 metallicRoughness = texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
+    prd.metallic *= metallicRoughness.b;
+    prd.roughness *= metallicRoughness.g;
   }
 }

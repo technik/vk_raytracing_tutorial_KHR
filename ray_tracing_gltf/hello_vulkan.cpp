@@ -64,7 +64,8 @@ void HelloVulkan::renderUI()
     bool mustClean = false;
     ImGui::Checkbox("Accumulate", &m_accumulate);
     mustClean |= ImGui::SliderFloat3("Light Position", &m_pushConstant.lightPosition.x, -20.f, 20.f);
-    mustClean |= ImGui::SliderFloat("Light Intensity", &m_pushConstant.lightIntensity, 0.f, 100.f);
+    mustClean |= ImGui::SliderFloat("Sky Intensity", &m_rtPushConstants.skyIntensity, 0.f, 100.f);
+    mustClean |= ImGui::SliderFloat("Sun Intensity", &m_rtPushConstants.sunIntensity, 0.f, 100.f);
     if (ImGui::CollapsingHeader("Reference path tracer"))
     {
         mustClean |= ImGui::InputInt("Max bounces", &m_rtPushConstants.maxBounces, 1);
@@ -906,10 +907,9 @@ void HelloVulkan::raytrace(const vk::CommandBuffer& cmdBuf, const nvmath::vec4f&
 
   m_debug.beginLabel(cmdBuf, "Ray trace");
   // Initializing push constant values
-  m_rtPushConstants.clearColor     = clearColor * m_pushConstant.lightIntensity;
+  m_rtPushConstants.clearColor     = clearColor;
   m_rtPushConstants.lightPosition  = m_pushConstant.lightPosition;
-  m_rtPushConstants.lightIntensity = m_pushConstant.lightIntensity;
-  m_rtPushConstants.lightType      = m_pushConstant.lightType;
+  m_rtPushConstants.lightPosition.normalize();
 
   cmdBuf.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, m_rtPipeline);
   cmdBuf.bindDescriptorSets(vk::PipelineBindPoint::eRayTracingKHR, m_rtPipelineLayout, 0,

@@ -43,7 +43,8 @@ float rnd(inout uint prev)
 //-------------------------------------------------------------------------------------------------
 
 // Randomly sampling around +Z
-vec3 samplingHemisphere(inout uint seed, in vec3 x, in vec3 y, in vec3 z)
+// Cosine weighted distribution
+vec3 samplingCosHemisphere(inout uint seed, in vec3 x, in vec3 y, in vec3 z)
 {
 
   float r1 = rnd(seed);
@@ -54,6 +55,19 @@ vec3 samplingHemisphere(inout uint seed, in vec3 x, in vec3 y, in vec3 z)
   direction      = direction.x * x + direction.y * y + direction.z * z;
 
   return direction;
+}
+
+vec3 samplingGGXHemisphere(inout uint seed, in float alpha)
+{
+  float alpha2 = alpha*alpha;
+  float u1 = rnd(seed);
+  float den = (alpha2-1)*u1 + 1;
+  float cosH2 = (1-u1) / den;
+  float cosH = sqrt(cosH2);
+  float sinH = sqrt(1-cosH2);
+  float phi = TwoPi*rnd(seed);
+
+  return vec3(cos(phi)*sinH, sin(phi)*sinH, cosH);
 }
 
 // Pixar's method for orthonormal basis generation
