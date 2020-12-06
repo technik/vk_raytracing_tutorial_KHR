@@ -47,123 +47,123 @@
 class HelloVulkan : public nvvk::AppBase
 {
 public:
-    void renderUI();
-    void setup(const vk::Instance&       instance,
-                const vk::Device&         device,
-                const vk::PhysicalDevice& physicalDevice,
-                uint32_t                  queueFamily) override;
-    void createDescriptorSetLayout();
-    void createGraphicsPipeline();
-    void loadScene(const std::string& filename);
-    void updateDescriptorSet();
-    void createUniformBuffer();
-    void createTextureImages(const vk::CommandBuffer& cmdBuf, tinygltf::Model& gltfModel);
-    void updateUniformBuffer();
-    void onResize(int /*w*/, int /*h*/) override;
-    void destroyResources();
-    void rasterize(const vk::CommandBuffer& cmdBuff);
+	void renderUI();
+	void setup(const vk::Instance&       instance,
+				const vk::Device&         device,
+				const vk::PhysicalDevice& physicalDevice,
+				uint32_t                  queueFamily) override;
+	void createDescriptorSetLayout();
+	void createGraphicsPipeline();
+	void loadScene(const std::string& filename);
+	void updateDescriptorSet();
+	void createUniformBuffer();
+	void createTextureImages(const vk::CommandBuffer& cmdBuf, tinygltf::Model& gltfModel);
+	void updateUniformBuffer();
+	void onResize(int /*w*/, int /*h*/) override;
+	void destroyResources();
+	void rasterize(const vk::CommandBuffer& cmdBuff);
 
-  // Structure used for retrieving the primitive information in the closest hit
-  // The gl_InstanceCustomIndexNV
-  struct RtPrimitiveLookup
-  {
-    uint32_t indexOffset;
-    uint32_t vertexOffset;
-    int      materialIndex;
-  };
+	// Structure used for retrieving the primitive information in the closest hit
+	// The gl_InstanceCustomIndexNV
+	struct RtPrimitiveLookup
+	{
+		uint32_t indexOffset;
+		uint32_t vertexOffset;
+		int      materialIndex;
+	};
 
 
-  nvh::GltfScene m_gltfScene;
-  nvvk::Buffer   m_vertexBuffer;
-  nvvk::Buffer   m_normalBuffer;
-  nvvk::Buffer   m_uvBuffer;
-  nvvk::Buffer   m_indexBuffer;
-  nvvk::Buffer   m_materialBuffer;
-  nvvk::Buffer   m_matrixBuffer;
-  nvvk::Buffer   m_rtPrimLookup;
+	nvh::GltfScene m_gltfScene;
+	nvvk::Buffer   m_vertexBuffer;
+	nvvk::Buffer   m_normalBuffer;
+	nvvk::Buffer   m_uvBuffer;
+	nvvk::Buffer   m_indexBuffer;
+	nvvk::Buffer   m_materialBuffer;
+	nvvk::Buffer   m_matrixBuffer;
+	nvvk::Buffer   m_rtPrimLookup;
 
-  // Information pushed at each draw call
-  struct ObjPushConstant
-  {
-    nvmath::vec3f lightPosition{0.f, 4.5f, 0.f};
-    int           instanceId{0};  // To retrieve the transformation matrix
-    float         lightIntensity{10.f};
-    int           lightType{1};  // 0: point, 1: infinite
-    int           materialId{0};
-  };
-  ObjPushConstant m_pushConstant;
+	// Information pushed at each draw call
+	struct ObjPushConstant
+	{
+		nvmath::vec3f lightPosition{0.f, 4.5f, 0.f};
+		int           instanceId{0};  // To retrieve the transformation matrix
+		float         lightIntensity{10.f};
+		int           lightType{1};  // 0: point, 1: infinite
+		int           materialId{0};
+	};
+	ObjPushConstant m_pushConstant;
 
-  // Graphic pipeline
-  vk::PipelineLayout          m_pipelineLayout;
-  vk::Pipeline                m_graphicsPipeline;
-  nvvk::DescriptorSetBindings m_descSetLayoutBind;
-  vk::DescriptorPool          m_descPool;
-  vk::DescriptorSetLayout     m_descSetLayout;
-  vk::DescriptorSet           m_descSet;
+	// Graphic pipeline
+	vk::PipelineLayout          m_pipelineLayout;
+	vk::Pipeline                m_graphicsPipeline;
+	nvvk::DescriptorSetBindings m_descSetLayoutBind;
+	vk::DescriptorPool          m_descPool;
+	vk::DescriptorSetLayout     m_descSetLayout;
+	vk::DescriptorSet           m_descSet;
 
-  nvvk::Buffer               m_cameraMat;  // Device-Host of the camera matrices
-  std::vector<nvvk::Texture> m_textures;   // vector of all textures of the scene
+	nvvk::Buffer               m_cameraMat;  // Device-Host of the camera matrices
+	std::vector<nvvk::Texture> m_textures;   // vector of all textures of the scene
 
-  nvvk::AllocatorDedicated m_alloc;  // Allocator for buffer, images, acceleration structures
-  nvvk::DebugUtil          m_debug;  // Utility to name objects
+	nvvk::AllocatorDedicated m_alloc;  // Allocator for buffer, images, acceleration structures
+	nvvk::DebugUtil          m_debug;  // Utility to name objects
 
-  // #Post
-  void createOffscreenRender();
-  void createPostPipeline();
-  void createPostDescriptor();
-  void updatePostDescriptorSet();
-  void drawPost(vk::CommandBuffer cmdBuf);
+	// #Post
+	void createOffscreenRender();
+	void createPostPipeline();
+	void createPostDescriptor();
+	void updatePostDescriptorSet();
+	void drawPost(vk::CommandBuffer cmdBuf);
 
-  nvvk::DescriptorSetBindings m_postDescSetLayoutBind;
-  vk::DescriptorPool          m_postDescPool;
-  vk::DescriptorSetLayout     m_postDescSetLayout;
-  vk::DescriptorSet           m_postDescSet;
-  vk::Pipeline                m_postPipeline;
-  vk::PipelineLayout          m_postPipelineLayout;
-  vk::RenderPass              m_offscreenRenderPass;
-  vk::Framebuffer             m_offscreenFramebuffer;
-  nvvk::Texture               m_offscreenColor;
-  vk::Format                  m_offscreenColorFormat{vk::Format::eR32G32B32A32Sfloat};
-  nvvk::Texture               m_offscreenDepth;
-  vk::Format                  m_offscreenDepthFormat{vk::Format::eD32Sfloat};
+	nvvk::DescriptorSetBindings m_postDescSetLayoutBind;
+	vk::DescriptorPool          m_postDescPool;
+	vk::DescriptorSetLayout     m_postDescSetLayout;
+	vk::DescriptorSet           m_postDescSet;
+	vk::Pipeline                m_postPipeline;
+	vk::PipelineLayout          m_postPipelineLayout;
+	vk::RenderPass              m_offscreenRenderPass;
+	vk::Framebuffer             m_offscreenFramebuffer;
+	nvvk::Texture               m_offscreenColor;
+	vk::Format                  m_offscreenColorFormat{vk::Format::eR32G32B32A32Sfloat};
+	nvvk::Texture               m_offscreenDepth;
+	vk::Format                  m_offscreenDepthFormat{vk::Format::eD32Sfloat};
 
-  // #VKRay
-  nvvk::RaytracingBuilderKHR::Blas primitiveToGeometry(const nvh::GltfPrimMesh& prim);
+	// #VKRay
+	nvvk::RaytracingBuilderKHR::Blas primitiveToGeometry(const nvh::GltfPrimMesh& prim);
 
-  void initRayTracing();
-  void createBottomLevelAS();
-  void createTopLevelAS();
-  void createRtDescriptorSet();
-  void updateRtDescriptorSet();
-  void createRtPipeline();
-  void createRtShaderBindingTable();
-  void raytrace(const vk::CommandBuffer& cmdBuf, const nvmath::vec4f& clearColor);
-  void updateFrame();
-  void resetFrame();
+	void initRayTracing();
+	void createBottomLevelAS();
+	void createTopLevelAS();
+	void createRtDescriptorSet();
+	void updateRtDescriptorSet();
+	void createRtPipeline();
+	void createRtShaderBindingTable();
+	void raytrace(const vk::CommandBuffer& cmdBuf, const nvmath::vec4f& clearColor);
+	void updateFrame();
+	void resetFrame();
 
-  vk::PhysicalDeviceRayTracingPropertiesKHR           m_rtProperties;
-  nvvk::RaytracingBuilderKHR                          m_rtBuilder;
-  nvvk::DescriptorSetBindings                         m_rtDescSetLayoutBind;
-  vk::DescriptorPool                                  m_rtDescPool;
-  vk::DescriptorSetLayout                             m_rtDescSetLayout;
-  vk::DescriptorSet                                   m_rtDescSet;
-  std::vector<vk::RayTracingShaderGroupCreateInfoKHR> m_rtShaderGroups;
-  vk::PipelineLayout                                  m_rtPipelineLayout;
-  vk::Pipeline                                        m_rtPipeline;
-  nvvk::Buffer                                        m_rtSBTBuffer;
+	vk::PhysicalDeviceRayTracingPropertiesKHR           m_rtProperties;
+	nvvk::RaytracingBuilderKHR                          m_rtBuilder;
+	nvvk::DescriptorSetBindings                         m_rtDescSetLayoutBind;
+	vk::DescriptorPool                                  m_rtDescPool;
+	vk::DescriptorSetLayout                             m_rtDescSetLayout;
+	vk::DescriptorSet                                   m_rtDescSet;
+	std::vector<vk::RayTracingShaderGroupCreateInfoKHR> m_rtShaderGroups;
+	vk::PipelineLayout                                  m_rtPipelineLayout;
+	vk::Pipeline                                        m_rtPipeline;
+	nvvk::Buffer                                        m_rtSBTBuffer;
 
-    struct RtPushConstant
-    {
-        nvmath::vec4f clearColor;
-        nvmath::vec3f lightPosition;
-        float         skyIntensity{4.f};
-        float         sunIntensity{10.f};
-        int           frame{ 0 };
-        int           maxBounces {4};
-        int           firstBounce {0};
-        int           renderFlags{0};
-    } m_rtPushConstants;
+	struct RtPushConstant
+	{
+		nvmath::vec4f clearColor;
+		nvmath::vec3f lightPosition;
+		float         skyIntensity{4.f};
+		float         sunIntensity{10.f};
+		int           frame{ 0 };
+		int           maxBounces {4};
+		int           firstBounce {0};
+		int           renderFlags{0};
+	} m_rtPushConstants;
 
 private:
-    bool m_accumulate{true};
+	bool m_accumulate{true};
 };
