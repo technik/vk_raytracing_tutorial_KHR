@@ -65,14 +65,19 @@ public:
 	void invalidate() { m_invalidated = true; }
 
 private:
-  void tryReload();
+	bool tryLoadPipeline();
+	void createSBT();
+	void tryReload();
 
 	vk::Device         m_device;
 	nvvk::AllocatorDedicated& m_alloc;
 	vk::PipelineLayout m_pipelineLayout;
 	vk::Pipeline	m_vkPipeline;
+	vk::Pipeline	m_stalePipeline;
 	nvvk::Buffer	m_SBTBuffer; // Shader binding table buffer in GPU memory
-	vk::DeviceSize	m_progSize;
+	vk::DeviceSize            m_progSize;
+	uint32_t m_groupHandleSize{};
+	uint32_t m_sbtSize;
 
 	uint32_t m_rayGenShadersOffset;
 	uint32_t m_missShadersOffset;

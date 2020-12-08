@@ -129,6 +129,7 @@ void main()
     prd.baseColor.xyz = vec3(0.85);
     prd.emittance.xyz = vec3(0.0);
   }
+  
   // Metallic & Roughness
   prd.metallic = mat.pbrMetallicFactor;
   prd.roughness = mat.pbrRoughnessFactor;

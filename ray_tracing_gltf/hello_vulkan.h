@@ -65,6 +65,7 @@ public:
 	void onResize(int /*w*/, int /*h*/) override;
 	void destroyResources();
 	void rasterize(const vk::CommandBuffer& cmdBuff);
+	void invalidateShaders() { m_referencePTPipeline->invalidate(); }
 
 	// Structure used for retrieving the primitive information in the closest hit
 	// The gl_InstanceCustomIndexNV

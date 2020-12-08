@@ -45,6 +45,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include "nvvk/commands_vk.hpp"
 #include "nvvk/context_vk.hpp"
 
+#include "FolderWatcher.h"
 
 //////////////////////////////////////////////////////////////////////////
 #define UNUSED(x) (void)(x)
@@ -84,12 +85,12 @@ static int const SAMPLE_HEIGHT = 720;
 //
 int main(int argc, char** argv)
 {
-	//std::string fileName = "D:/repos/assets/glTF-Sample-Models/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf";
+	std::string fileName = "D:/repos/assets/glTF-Sample-Models/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf";
 	//std::string fileName = "D:/repos/assets/glTF-Sample-Models/2.0/SciFiHelmet/glTF/SciFiHelmet.gltf";
-	std::string fileName = "D:/repos/assets/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
+	//std::string fileName = "D:/repos/assets/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
 	if(argc > 1)
 	{
-		fileName = argv[1];
+		//fileName = argv[1];
 	}
 	else
 	{
@@ -212,9 +213,24 @@ int main(int argc, char** argv)
   helloVk.setupGlfwCallbacks(window);
   ImGui_ImplGlfw_InitForVulkan(window, true);
 
+	// Shader reload
+	auto shadersFolder = std::string(PROJECT_ABSDIRECTORY) + "/shaders";
+	auto shaderWatcher = FolderWatcher(std::filesystem::path(shadersFolder));
+	shaderWatcher.listen([&helloVk](auto& changes) {
+		for(auto& path : changes){
+			if(path.string().find(".spv") != std::string::npos)
+			{
+				helloVk.invalidateShaders();
+				helloVk.resetFrame();
+				return;
+			}
+		}
+	});
+
   // Main loop
   while(!glfwWindowShouldClose(window))
   {
+    shaderWatcher.update();
 	glfwPollEvents();
 	if(helloVk.isMinimized())
 	  continue;
