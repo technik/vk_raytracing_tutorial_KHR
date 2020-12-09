@@ -80,6 +80,21 @@ void createCoordinateSystem(in vec3 n, out vec3 b1, out vec3 b2)
   b2 = vec3(b, sign + n.y * n.y * a, -n.y);
 }
 
+vec3 sampleConeDirection(inout uint seed, in vec3 axisDir, in float cosR)
+{
+  // Sample a unit disk, scale it by cosR
+  float r = sqrt(rnd(seed)) * cosR;
+  float cost = cos(rnd(seed));
+  float sint = sqrt(1-cost*cost) * (seed%2==0 ? 1 : -1);
+
+  // Create a tangent space around the cone axis
+  vec3 b,t;
+  createCoordinateSystem(axisDir,b,t);
+
+  // Reconstruct the sampled direction
+  return normalize(r*(cost*t + sint*b)+axisDir);
+}
+
 vec3 randomUnitVector(in vec2 seed)
 {
   float theta = TwoPi*seed.x;

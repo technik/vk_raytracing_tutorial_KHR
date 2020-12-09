@@ -157,7 +157,8 @@ void main()
     // Explicitly sample sun light
     if(rayDepth >= pushC.firstBounce && rayDepth < pushC.maxBounces)
     {
-	    float ndl = dot(pushC.lightPosition, hitNormal);
+    	vec3 sunDir = sampleConeDirection(seed, pushC.lightPosition, 0.0046);
+	    float ndl = dot(sunDir, hitNormal);
 	    if(ndl > 0)
 	    {
 	    	traceRayEXT(topLevelAS,        // acceleration structure
@@ -168,15 +169,15 @@ void main()
 				0,                 // missIndex
 				origin.xyz,            // ray origin
 				tMin,              // ray min range
-				pushC.lightPosition.xyz, // ray direction
+				sunDir, // ray direction
 				tMax,              // ray max range
 				0                  // payload (location = 0)
 		    );
 	      	if(prd.world_position.w < 0) // miss, no obstacle
 	      	{
-	        	vec3 H = normalize(pushC.lightPosition.xyz - direction.xyz);
+	        	vec3 H = normalize(sunDir - direction.xyz);
 		        const float ndh = max(0.0, dot(H, hitNormal));
-		        const float hdl = max(0.0, dot(H, pushC.lightPosition));
+		        const float hdl = max(0.0, dot(H, sunDir));
 		        const float ndv = max(1e-4, -dot(direction.xyz, hitNormal));
 		        float D = D_GGX(ndh, alpha);
 		        float G = SmithGGX_G2Approx(ndv, ndl, alpha);
