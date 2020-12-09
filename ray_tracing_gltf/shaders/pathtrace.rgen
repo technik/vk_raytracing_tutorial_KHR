@@ -74,7 +74,6 @@ void main()
   vec3 rayAccumLight = vec3(0);
 
   for(int rayDepth = 0; rayDepth <= pushC.maxBounces; rayDepth++)
-  //for(int rayDepth = 0; rayDepth < 1; rayDepth++)
   {
     traceRayEXT(topLevelAS,        // acceleration structure
                 rayFlags,          // rayFlags
@@ -156,37 +155,43 @@ void main()
     }
 
     // Explicitly sample sun light
-    float ndl = dot(pushC.lightPosition, hitNormal);
-    if(ndl > 0)
+    if(rayDepth >= pushC.firstBounce && rayDepth < pushC.maxBounces)
     {
-      traceRayEXT(topLevelAS,        // acceleration structure
-              rayFlags,          // rayFlags
-              0xFF,              // cullMask
-              0,                 // sbtRecordOffset
-              0,                 // sbtRecordStride
-              0,                 // missIndex
-              origin.xyz,            // ray origin
-              tMin,              // ray min range
-              pushC.lightPosition.xyz, // ray direction
-              tMax,              // ray max range
-              0                  // payload (location = 0)
-      );
-      if(prd.world_position.w < 0) // miss, no obstacle
-      {
-        vec3 H = normalize(pushC.lightPosition.xyz - direction.xyz);
-        const float ndh = max(0.0, dot(H, hitNormal));
-        const float hdl = max(0.0, dot(H, pushC.lightPosition));
-        const float ndv = max(1e-4, -dot(direction.xyz, hitNormal));
-        float D = D_GGX(ndh, alpha);
-        float G = SmithGGX_G2Approx(ndv, ndl, alpha);
-        vec3 F = F_Schlick(hdl, specularColor);
-        vec3 Fr = min(1.0, D*G)*F;
+	    float ndl = dot(pushC.lightPosition, hitNormal);
+	    if(ndl > 0)
+	    {
+	    	traceRayEXT(topLevelAS,        // acceleration structure
+				rayFlags,          // rayFlags
+				0xFF,              // cullMask
+				0,                 // sbtRecordOffset
+				0,                 // sbtRecordStride
+				0,                 // missIndex
+				origin.xyz,            // ray origin
+				tMin,              // ray min range
+				pushC.lightPosition.xyz, // ray direction
+				tMax,              // ray max range
+				0                  // payload (location = 0)
+		    );
+	      	if(prd.world_position.w < 0) // miss, no obstacle
+	      	{
+	        	vec3 H = normalize(pushC.lightPosition.xyz - direction.xyz);
+		        const float ndh = max(0.0, dot(H, hitNormal));
+		        const float hdl = max(0.0, dot(H, pushC.lightPosition));
+		        const float ndv = max(1e-4, -dot(direction.xyz, hitNormal));
+		        float D = D_GGX(ndh, alpha);
+		        float G = SmithGGX_G2Approx(ndv, ndl, alpha);
+		        vec3 F = F_Schlick(hdl, specularColor);
+		        vec3 Fr = min(1.0, D*G)*F;
+		        
+		    	if((pushC.renderFlags & FLAG_DIFFUSE_ONLY) > 0)
+		    		Fr *= 0;
+		    	vec3 diffContrib = diffuseColor / M_PI;
 
-        if(rayDepth >= pushC.firstBounce)
-        {
-          rayAccumLight += lightModulation * (diffuseColor / M_PI + Fr) * pushC.sunIntensity * ndl;
-        }
-      }
+		    	if((pushC.renderFlags & FLAG_SPECULAR_ONLY) > 0)
+		    		diffContrib *= 0;
+		      	rayAccumLight += lightModulation * (diffContrib + Fr) * pushC.sunIntensity * ndl;
+	        }
+	    }
     }
 
     direction.xyz = L;
