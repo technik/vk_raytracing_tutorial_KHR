@@ -26,7 +26,6 @@ layout(set = 1, binding = B_TEXCOORDS) readonly buffer _TexCoordBuf {float texco
 layout(set = 1, binding = B_MATERIALS) readonly buffer _MaterialBuffer {GltfMaterial materials[];};
 layout(set = 1, binding = B_TEXTURES) uniform sampler2D texturesMap[]; // all textures
 
-
 // clang-format on
 
 layout(push_constant) uniform Constants
@@ -129,6 +128,16 @@ void main()
     prd.baseColor.xyz = vec3(0.85);
     prd.emittance.xyz = vec3(0.0);
   }
+  prd.alphaMode = mat.alphaMode;
+  // Alpha
+  if(mat.alphaMode == 0.0) // Opaque
+  {
+    prd.baseColor.a = 1.0;
+  } else if(mat.alphaMode == 1) // Mask
+  {
+    prd.baseColor.a = prd.baseColor.a < mat.alphaCutoff ? 0.0 : 1.0;
+    prd.emittance *= prd.baseColor.a;
+  } // Blend
 
   // Metallic & Roughness
   prd.metallic = mat.pbrMetallicFactor;

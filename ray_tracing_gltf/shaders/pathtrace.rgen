@@ -88,8 +88,8 @@ void main()
                 0                  // payload (location = 0)
     );
 
-    if(rayDepth >= pushC.firstBounce ||
-      (rayDepth == 0 && prd.world_position.w < 0)) // Always show the background
+    if((rayDepth >= pushC.firstBounce || rayDepth == 0)
+      && prd.world_position.w < 0) // Always show the background
     {
       rayAccumLight += lightModulation * prd.emittance;
     }
@@ -98,6 +98,7 @@ void main()
       break;
     }
 
+	rayAccumLight += lightModulation * prd.emittance; // Emissive light from the model
     // new ray config for next frame
     vec3 hitNormal = prd.world_normal;
     origin.xyz = prd.world_position.xyz + hitNormal*1e-4*prd.world_position.w;
@@ -108,11 +109,11 @@ void main()
     vec3 specularColor = mix(vec3(0.04), prd.baseColor.xyz, prd.metallic);
     vec3 diffuseColor = prd.baseColor.xyz * (1.0-prd.metallic);
 
-    // 50% probability for each path
+    // 50% probability for each path. TODO: Support alpha
     vec3 brdf = vec3(1.0);
     vec3 tangent, bitangent;
     createCoordinateSystem(hitNormal, tangent, bitangent);
-    if((seed & 1) > 0) // Diffuse
+    if((seed & 1) > 0) // Diffuse.
     {
       	if(rayDepth == 0 && (pushC.renderFlags & FLAG_SPECULAR_ONLY) > 0)
        		break; // Ignore diffuse path
@@ -190,13 +191,22 @@ void main()
 
 		    	if((pushC.renderFlags & FLAG_SPECULAR_ONLY) > 0)
 		    		diffContrib *= 0;
-		      	rayAccumLight += lightModulation * (diffContrib + Fr) * pushC.sunIntensity * ndl;
+		      	rayAccumLight += lightModulation * (diffContrib + Fr) * pushC.sunIntensity * ndl * prd.baseColor.a;
 	        }
 	    }
     }
 
-    direction.xyz = L;
-    lightModulation *= brdf;
+    // Handle transparency
+    if(prd.alphaMode > 0 && prd.baseColor.a < rnd(seed))
+    {
+    	direction.xyz = direction.xyz;
+    	rayDepth--;
+    }
+    else
+    {
+    	direction.xyz = L;
+    	lightModulation *= brdf;
+    }
   }
 
   // Do accumulation over time

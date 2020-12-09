@@ -9,6 +9,7 @@ struct hitPayload
   vec4 baseColor;
   float roughness;
   float metallic;
+  int alphaMode;
 };
 
 // Render flags
