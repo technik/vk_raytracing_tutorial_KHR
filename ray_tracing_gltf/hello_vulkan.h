@@ -161,6 +161,7 @@ public:
 		int           frame{ 0 };
 		int           maxBounces {4};
 		int           firstBounce {0};
+		float			focalDistance = 1.f;
 		int           renderFlags{0};
 	} m_rtPushConstants;
 

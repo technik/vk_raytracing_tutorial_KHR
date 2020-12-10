@@ -83,12 +83,21 @@ void HelloVulkan::renderUI()
         mustClean |= ImGui::Checkbox("Ignore diffuse", &specularOnly);
         bool importanceSampling = m_rtPushConstants.renderFlags & (1 << 6);
         mustClean |= ImGui::Checkbox("Importance sampling", &importanceSampling);
+        bool useDOF = m_rtPushConstants.renderFlags & (1 << 7);
+        mustClean |= ImGui::Checkbox("Depth of field", &useDOF);
         m_rtPushConstants.renderFlags =
             (overrideAlbedo ? (1 << 1) : 0) |
             (greyFurnace ? (1 << 3) : 0) |
             (diffuseOnly ? (1 << 4) : 0) |
             (specularOnly ? (1 << 5) : 0) |
-            (importanceSampling ? (1 << 6) : 0);
+            (importanceSampling ? (1 << 6) : 0) |
+            (useDOF ? (1 << 7) : 0);
+        if(useDOF)
+        {
+          float expFocalDistance = log10f(m_rtPushConstants.focalDistance);
+          mustClean |= ImGui::SliderFloat("Focal distance exp", &expFocalDistance, -3.f, 3.f);
+          m_rtPushConstants.focalDistance = powf(10.f, expFocalDistance);
+        }
     }
     if (mustClean || !m_accumulate)
     {

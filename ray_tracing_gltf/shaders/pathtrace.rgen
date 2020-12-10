@@ -31,6 +31,7 @@ layout(push_constant) uniform Constants
   int   frame;
   int   maxBounces;
   int   firstBounce;
+  float focalDistance;
   int   renderFlags;
 }
 pushC;
@@ -58,13 +59,23 @@ void main()
   // Initialize the random number
   uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, int(clockARB()));
 
-  const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
+  //const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);//vec2(rnd(seed), rnd(seed));
+  const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(rnd(seed), rnd(seed));
   const vec2 inUV        = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
   vec2       d           = inUV * 2.0 - 1.0;
 
   vec4 origin    = cam.viewInverse * vec4(0, 0, 0, 1);
   vec4 target    = cam.projInverse * vec4(d.x, d.y, 1, 1);
   vec4 direction = cam.viewInverse * vec4(normalize(target.xyz), 0);
+
+  if((pushC.renderFlags & FLAG_DOF) > 0)
+  {
+  	const float lensRadius = 0.01f;
+  	vec4 viewSpaceLensSample = vec4(sampleDisk(seed, lensRadius) * vec2(1.0, float(gl_LaunchSizeEXT.x)/gl_LaunchSizeEXT.y), 0, 1);
+  	origin = cam.viewInverse * viewSpaceLensSample;
+
+  	direction = cam.viewInverse * vec4(normalize(target.xyz*pushC.focalDistance-viewSpaceLensSample.xyz), 0);
+  }
 
   uint  rayFlags = gl_RayFlagsOpaqueEXT;
   float tMin     = 0.001;

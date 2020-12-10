@@ -20,3 +20,4 @@ struct hitPayload
 #define FLAG_DIFFUSE_ONLY (1<<4)
 #define FLAG_SPECULAR_ONLY (1<<5)
 #define FLAG_IMPORTANCE_SAMPLING (1<<6)
+#define FLAG_DOF (1<<7)
