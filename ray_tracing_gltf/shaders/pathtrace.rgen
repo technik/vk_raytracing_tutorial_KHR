@@ -54,6 +54,37 @@ vec3 F_Schlick(float hdl, vec3 f0) {
     return f0 + (1.0 - f0) * p*p2*p2;
 }
 
+bool traceRecursiveRay(vec3 ro, vec3 rd, inout uint seed)
+{
+  	uint  rayFlags = gl_RayFlagsOpaqueEXT;
+
+  	float tMin     = 0.001;
+  	float tMax     = 10000.0;
+	bool occluded = false;
+	while(!occluded)
+	{
+		traceRayEXT(topLevelAS, // acceleration structure
+                rayFlags,       // rayFlags
+                0xFF,           // cullMask
+                0,              // sbtRecordOffset
+                0,              // sbtRecordStride
+                0,              // missIndex
+                ro,            	// ray origin
+                tMin,           // ray min range
+                rd,         	// ray direction
+                tMax,           // ray max range
+                0               // payload (location = 0)
+    	);
+    	if(prd.world_position.w < 0 || prd.world_position.w >= tMax)
+    		return false;
+    	if(prd.baseColor.a == 1.0 || prd.baseColor.a > rnd(seed))
+    		return true;
+
+    	ro = prd.world_position.xyz + prd.world_normal * 1e-4 * prd.world_position.w;
+    	tMax -= prd.world_position.w;
+	}
+}
+
 void main()
 {
   // Initialize the random number
@@ -70,34 +101,19 @@ void main()
 
   if((pushC.renderFlags & FLAG_DOF) > 0)
   {
-  	const float lensRadius = 0.01f;
+  	const float lensRadius = 0.0021f;
   	vec4 viewSpaceLensSample = vec4(sampleDisk(seed, lensRadius) * vec2(1.0, float(gl_LaunchSizeEXT.x)/gl_LaunchSizeEXT.y), 0, 1);
   	origin = cam.viewInverse * viewSpaceLensSample;
 
   	direction = cam.viewInverse * vec4(normalize(target.xyz*pushC.focalDistance-viewSpaceLensSample.xyz), 0);
   }
 
-  uint  rayFlags = gl_RayFlagsOpaqueEXT;
-  float tMin     = 0.001;
-  float tMax     = 10000.0;
-
   vec3 lightModulation = vec3(1);
   vec3 rayAccumLight = vec3(0);
 
   for(int rayDepth = 0; rayDepth <= pushC.maxBounces; rayDepth++)
   {
-    traceRayEXT(topLevelAS,        // acceleration structure
-                rayFlags,          // rayFlags
-                0xFF,              // cullMask
-                0,                 // sbtRecordOffset
-                0,                 // sbtRecordStride
-                0,                 // missIndex
-                origin.xyz,            // ray origin
-                tMin,              // ray min range
-                direction.xyz,         // ray direction
-                tMax,              // ray max range
-                0                  // payload (location = 0)
-    );
+  	traceRecursiveRay(origin.xyz, direction.xyz, seed);
 
     if((rayDepth >= pushC.firstBounce || rayDepth == 0)
       && prd.world_position.w < 0) // Always show the background
@@ -173,19 +189,7 @@ void main()
 	    float ndl = dot(sunDir, hitNormal);
 	    if(ndl > 0)
 	    {
-	    	traceRayEXT(topLevelAS,        // acceleration structure
-				rayFlags,          // rayFlags
-				0xFF,              // cullMask
-				0,                 // sbtRecordOffset
-				0,                 // sbtRecordStride
-				0,                 // missIndex
-				origin.xyz,            // ray origin
-				tMin,              // ray min range
-				sunDir, // ray direction
-				tMax,              // ray max range
-				0                  // payload (location = 0)
-		    );
-	      	if(prd.world_position.w < 0) // miss, no obstacle
+	      	if(!traceRecursiveRay(origin.xyz, sunDir, seed)) // miss, no obstacle
 	      	{
 	        	vec3 H = normalize(sunDir - direction.xyz);
 		        const float ndh = max(0.0, dot(H, hitNormal));
@@ -202,22 +206,13 @@ void main()
 
 		    	if((pushC.renderFlags & FLAG_SPECULAR_ONLY) > 0)
 		    		diffContrib *= 0;
-		      	rayAccumLight += lightModulation * (diffContrib + Fr) * pushC.sunIntensity * ndl * prd.baseColor.a;
+		      	rayAccumLight += lightModulation * (diffContrib + Fr) * pushC.sunIntensity * ndl;
 	        }
 	    }
     }
 
-    // Handle transparency
-    if(prd.alphaMode > 0 && prd.baseColor.a < rnd(seed))
-    {
-    	direction.xyz = direction.xyz;
-    	rayDepth--;
-    }
-    else
-    {
-    	direction.xyz = L;
-    	lightModulation *= brdf;
-    }
+	direction.xyz = L;
+	lightModulation *= brdf;
   }
 
   // Do accumulation over time

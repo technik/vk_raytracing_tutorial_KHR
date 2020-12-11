@@ -137,8 +137,7 @@ void main()
   } else if(mat.alphaMode == 1) // Mask
   {
     prd.baseColor.a = prd.baseColor.a < mat.alphaCutoff ? 0.0 : 1.0;
-    prd.emittance *= prd.baseColor.a;
-  } // Blend
+  } // Blend. Leave coverage as it is
 
   // Metallic & Roughness
   prd.metallic = mat.pbrMetallicFactor;
