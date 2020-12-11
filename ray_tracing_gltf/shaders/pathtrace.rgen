@@ -32,6 +32,7 @@ layout(push_constant) uniform Constants
   int   maxBounces;
   int   firstBounce;
   float focalDistance;
+  float lensRadius;
   int   renderFlags;
 }
 pushC;
@@ -101,8 +102,7 @@ void main()
 
   if((pushC.renderFlags & FLAG_DOF) > 0)
   {
-  	const float lensRadius = 0.0021f;
-  	vec4 viewSpaceLensSample = vec4(sampleDisk(seed, lensRadius) * vec2(1.0, float(gl_LaunchSizeEXT.x)/gl_LaunchSizeEXT.y), 0, 1);
+  	vec4 viewSpaceLensSample = vec4(sampleDisk(seed, pushC.lensRadius) * vec2(1.0, float(gl_LaunchSizeEXT.x)/gl_LaunchSizeEXT.y), 0, 1);
   	origin = cam.viewInverse * viewSpaceLensSample;
 
   	direction = cam.viewInverse * vec4(normalize(target.xyz*pushC.focalDistance-viewSpaceLensSample.xyz), 0);

@@ -38,6 +38,7 @@ layout(push_constant) uniform Constants
   int   maxBounces;
   int   firstBounce;
   float focalDistance;
+  float lensRadius;
   int   renderFlags;
 }
 pushC;

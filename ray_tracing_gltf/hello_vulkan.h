@@ -154,15 +154,16 @@ public:
 
 	struct RtPushConstant
 	{
-		nvmath::vec4f clearColor;
-		nvmath::vec3f lightPosition;
-		float         skyIntensity{4.f};
-		float         sunIntensity{10.f};
-		int           frame{ 0 };
-		int           maxBounces {4};
-		int           firstBounce {0};
-		float			focalDistance = 1.f;
-		int           renderFlags{0};
+		nvmath::vec4f	clearColor;
+		nvmath::vec3f	lightPosition;
+		float			skyIntensity{4.f};
+		float			sunIntensity{10.f};
+		int				frame{ 0 };
+		int				maxBounces {4};
+		int				firstBounce {0};
+		float			focalDistance{1.f};
+		float			lensRadius {0.01f};
+		int				renderFlags{0};
 	} m_rtPushConstants;
 
 private:

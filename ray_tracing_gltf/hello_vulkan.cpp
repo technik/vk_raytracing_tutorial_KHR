@@ -96,6 +96,7 @@ void HelloVulkan::renderUI()
         {
           float expFocalDistance = log10f(m_rtPushConstants.focalDistance);
           mustClean |= ImGui::SliderFloat("Focal distance exp", &expFocalDistance, -3.f, 3.f);
+          mustClean |= ImGui::SliderFloat("Lens radius", &m_rtPushConstants.lensRadius, 0.f, 0.5f);
           m_rtPushConstants.focalDistance = powf(10.f, expFocalDistance);
         }
     }
