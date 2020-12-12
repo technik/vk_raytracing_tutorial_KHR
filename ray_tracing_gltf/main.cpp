@@ -116,7 +116,7 @@ int main(int argc, char** argv)
 	};
 
 	// Create example
-	HelloVulkan helloVk;
+	HelloVulkan helloVk(*renderContext);
 
 	helloVk.setup(
 		renderContext->instance(),

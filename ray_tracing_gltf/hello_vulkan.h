@@ -40,6 +40,8 @@
 #include "RaytracingPipeline.h"
 #include <memory>
 
+class RenderContext;
+
 //--------------------------------------------------------------------------------------------------
 // Simple rasterizer of OBJ objects
 // - Each OBJ loaded are stored in an `ObjModel` and referenced by a `ObjInstance`
@@ -50,6 +52,7 @@
 class HelloVulkan : public nvvk::AppBase
 {
 public:
+	HelloVulkan(RenderContext&);
 	void renderUI();
 	void setup(const vk::Instance&       instance,
 				const vk::Device&         device,
@@ -108,7 +111,7 @@ public:
 	nvvk::Buffer               m_cameraMat;  // Device-Host of the camera matrices
 	std::vector<nvvk::Texture> m_textures;   // vector of all textures of the scene
 
-	nvvk::AllocatorDedicated m_alloc;  // Allocator for buffer, images, acceleration structures
+	nvvk::AllocatorDedicated& m_alloc;  // Allocator for buffer, images, acceleration structures
 	nvvk::DebugUtil          m_debug;  // Utility to name objects
 
 	// #Post

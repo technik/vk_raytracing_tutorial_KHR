@@ -20,39 +20,19 @@
 #include <vulkan/vulkan.hpp>
 
 #define NVVK_ALLOC_DEDICATED
-
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "nvvk/context_vk.hpp"
 #include "nvvk/allocator_vk.hpp"
-#include "nvvk/debug_util_vk.hpp"
 #include "nvmath/nvmath.h"
 
-#include <string>
 
-// Hold global GPU objects and properties
-class RenderContext
+// Notify listeners when files change in a watched folder.
+class RenderScene
 {
 public:
-	static std::unique_ptr<RenderContext> create(const nvmath::vec2ui& windowSize, const std::string& windowName);
-	~RenderContext();
+	RenderScene();
 
-	vk::Device					device() const { return m_vkctx.m_device; }
-	vk::Instance				instance() const { return m_vkctx.m_instance; }
-	vk::PhysicalDevice			physicalDevice() const { return m_vkctx.m_physicalDevice; }
-	uint32_t					graphicsQueueIndex() const { return m_vkctx.m_queueGCT.familyIndex; }
-	// Allocator for buffer, images, acceleration structures
-	nvvk::AllocatorDedicated&	alloc() { return m_alloc; }
+	// Static models can have their hierarchy collapsed
+	uint32_t loadModel(); ///< Returns model id
 
-	const vk::SurfaceKHR		surface() const { return m_surface; }
-	auto						window() const { return m_window; }
-
-private:
-	RenderContext(const nvmath::vec2ui& windowSize, const std::string& windowName);
-	void getVkSurface(const vk::Instance& instance);
-
-	GLFWwindow* m_window;
-	nvvk::Context m_vkctx{};
-	vk::SurfaceKHR m_surface;
-	nvvk::AllocatorDedicated m_alloc;  // Allocator for buffer, images, acceleration structures
+	/// Returns instance id
+	uint32_t createModelInstance(uint32_t modelId, const nvmath::mat4f& worldFromInstance);
 };
