@@ -32,7 +32,6 @@
 #include <array>
 #include <iostream>
 #include <vulkan/vulkan.hpp>
-VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -43,8 +42,8 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include "nvpsystem.hpp"
 #include "nvvk/appbase_vkpp.hpp"
 #include "nvvk/commands_vk.hpp"
-#include "nvvk/context_vk.hpp"
 
+#include "RenderContext.h"
 #include "FolderWatcher.h"
 
 //////////////////////////////////////////////////////////////////////////
@@ -53,12 +52,6 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 // Default search path for shaders
 std::vector<std::string> defaultSearchPaths;
-
-// GLFW Callback functions
-static void onErrorCallback(int error, const char* description)
-{
-  fprintf(stderr, "GLFW Error %d: %s\n", error, description);
-}
 
 // Extra UI
 void renderUI(HelloVulkan& helloVk)
@@ -88,10 +81,11 @@ int main(int argc, char** argv)
 	//std::string fileName = "D:/repos/assets/glTF-Sample-Models/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf";
 	//std::string fileName = "D:/repos/assets/glTF-Sample-Models/2.0/SciFiHelmet/glTF/SciFiHelmet.gltf";
 	//std::string fileName = "D:/repos/assets/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
-	std::string fileName = "E:/repos/rev/samples/gltfViewer/bin/aventador/scene.gltf";
+	std::string fileName = "D:/repos/assets/glTF-Sample-Models/2.0/TransmissionTest/glTF/TransmissionTest.gltf";
+	//std::string fileName = "E:/repos/rev/samples/gltfViewer/bin/aventador/scene.gltf";
 	if(argc > 1)
 	{
-		fileName = argv[1];
+		//fileName = argv[1];
 	}
 	else
 	{
@@ -99,120 +93,73 @@ int main(int argc, char** argv)
 		//return -1;
 	}
 
-  // Setup GLFW window
-  glfwSetErrorCallback(onErrorCallback);
-  if(!glfwInit())
-  {
-	return 1;
-  }
-  glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-  GLFWwindow* window =
-	  glfwCreateWindow(SAMPLE_WIDTH, SAMPLE_HEIGHT, PROJECT_NAME, nullptr, nullptr);
+	auto renderContext = RenderContext::create({SAMPLE_WIDTH, SAMPLE_HEIGHT}, "The other path tracer");
+	if (!renderContext)
+	{
+		std::cout << "Failed to create render context\n";
+		return -1;
+	}
 
-  // Setup camera
-  CameraManip.setWindowSize(SAMPLE_WIDTH, SAMPLE_HEIGHT);
-  CameraManip.setLookat(nvmath::vec3f(0, 0, 15), nvmath::vec3f(0, 0, 0), nvmath::vec3f(0, 1, 0));
+	// Setup camera
+	CameraManip.setWindowSize(SAMPLE_WIDTH, SAMPLE_HEIGHT);
+	CameraManip.setLookat(nvmath::vec3f(0, 0, 15), nvmath::vec3f(0, 0, 0), nvmath::vec3f(0, 1, 0));
 
-  // Setup Vulkan
-  if(!glfwVulkanSupported())
-  {
-	printf("GLFW: Vulkan Not Supported\n");
-	return 1;
-  }
+	// setup some basic things for the sample, logging file for example
+	NVPSystem system(argv[0], PROJECT_NAME);
 
-  // setup some basic things for the sample, logging file for example
-  NVPSystem system(argv[0], PROJECT_NAME);
+	// Search path for shaders and other media
+	defaultSearchPaths = {
+		PROJECT_ABSDIRECTORY,        // shaders
+		PROJECT_ABSDIRECTORY "../",  // media
+		PROJECT_NAME,                // installed: shaders + media
+		NVPSystem::exePath() + std::string(PROJECT_NAME),
+	};
 
-  // Search path for shaders and other media
-  defaultSearchPaths = {
-	  PROJECT_ABSDIRECTORY,        // shaders
-	  PROJECT_ABSDIRECTORY "../",  // media
-	  PROJECT_NAME,                // installed: shaders + media
-	  NVPSystem::exePath() + std::string(PROJECT_NAME),
-  };
+	// Create example
+	HelloVulkan helloVk;
 
+	helloVk.setup(
+		renderContext->instance(),
+		renderContext->device(),
+		renderContext->physicalDevice(),
+		renderContext->graphicsQueueIndex());
 
-  // Requesting Vulkan extensions and layers
-  nvvk::ContextCreateInfo contextInfo(true);
-  contextInfo.setVersion(1, 2);
-  contextInfo.addInstanceLayer("VK_LAYER_LUNARG_monitor", true);
-  contextInfo.addInstanceExtension(VK_KHR_SURFACE_EXTENSION_NAME);
-#ifdef WIN32
-  contextInfo.addInstanceExtension(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
-#else
-  contextInfo.addInstanceExtension(VK_KHR_XLIB_SURFACE_EXTENSION_NAME);
-  contextInfo.addInstanceExtension(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
-#endif
-  contextInfo.addInstanceExtension(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
-  contextInfo.addDeviceExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-  contextInfo.addDeviceExtension(VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME);
-  contextInfo.addDeviceExtension(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
-  // #VKRay: Activate the ray tracing extension
-  vk::PhysicalDeviceRayTracingFeaturesKHR raytracingFeature;
-  contextInfo.addDeviceExtension(VK_KHR_RAY_TRACING_EXTENSION_NAME, false, &raytracingFeature);
-  contextInfo.addDeviceExtension(VK_KHR_MAINTENANCE3_EXTENSION_NAME);
-  contextInfo.addDeviceExtension(VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME);
-  contextInfo.addDeviceExtension(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
-  contextInfo.addDeviceExtension(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
-  contextInfo.addDeviceExtension(VK_KHR_SHADER_CLOCK_EXTENSION_NAME);
+	helloVk.createSurface(renderContext->surface(), SAMPLE_WIDTH, SAMPLE_HEIGHT);
+	helloVk.createDepthBuffer();
+	helloVk.createRenderPass();
+	helloVk.createFrameBuffers();
+
+	// Setup Imgui
+	helloVk.initGUI(0);  // Using sub-pass 0
+
+	// Creation of the example
+	//helloVk.loadScene(nvh::findFile("media/scenes/cornellBox.gltf", defaultSearchPaths));
+	helloVk.loadScene(nvh::findFile(fileName, defaultSearchPaths));
 
 
-  // Creating Vulkan base application
-  nvvk::Context vkctx{};
-  vkctx.initInstance(contextInfo);
-  // Find all compatible devices
-  auto compatibleDevices = vkctx.getCompatibleDevices(contextInfo);
-  assert(!compatibleDevices.empty());
-  // Use a compatible device
-  vkctx.initDevice(compatibleDevices[0], contextInfo);
+	helloVk.createOffscreenRender();
+	helloVk.createDescriptorSetLayout();
+	helloVk.createGraphicsPipeline();
+	helloVk.createUniformBuffer();
+	helloVk.updateDescriptorSet();
 
+	// #VKRay
+	helloVk.initRayTracing();
+	helloVk.createBottomLevelAS();
+	helloVk.createTopLevelAS();
+	helloVk.createRtDescriptorSet();
+	helloVk.createRtPipeline();
 
-  // Create example
-  HelloVulkan helloVk;
+	helloVk.createPostDescriptor();
+	helloVk.createPostPipeline();
+	helloVk.updatePostDescriptorSet();
 
-  // Window need to be opened to get the surface on which to draw
-  const vk::SurfaceKHR surface = helloVk.getVkSurface(vkctx.m_instance, window);
-  vkctx.setGCTQueueWithPresent(surface);
+	nvmath::vec4f clearColor   = nvmath::vec4f(1, 1, 1, 1.00f);
+	bool          useRaytracer = true;
 
-  helloVk.setup(vkctx.m_instance, vkctx.m_device, vkctx.m_physicalDevice,
-				vkctx.m_queueGCT.familyIndex);
-  helloVk.createSurface(surface, SAMPLE_WIDTH, SAMPLE_HEIGHT);
-  helloVk.createDepthBuffer();
-  helloVk.createRenderPass();
-  helloVk.createFrameBuffers();
-
-  // Setup Imgui
-  helloVk.initGUI(0);  // Using sub-pass 0
-
-  // Creation of the example
-  //helloVk.loadScene(nvh::findFile("media/scenes/cornellBox.gltf", defaultSearchPaths));
-  helloVk.loadScene(nvh::findFile(fileName, defaultSearchPaths));
-
-
-  helloVk.createOffscreenRender();
-  helloVk.createDescriptorSetLayout();
-  helloVk.createGraphicsPipeline();
-  helloVk.createUniformBuffer();
-  helloVk.updateDescriptorSet();
-
-  // #VKRay
-  helloVk.initRayTracing();
-  helloVk.createBottomLevelAS();
-  helloVk.createTopLevelAS();
-  helloVk.createRtDescriptorSet();
-  helloVk.createRtPipeline();
-
-  helloVk.createPostDescriptor();
-  helloVk.createPostPipeline();
-  helloVk.updatePostDescriptorSet();
-
-
-  nvmath::vec4f clearColor   = nvmath::vec4f(1, 1, 1, 1.00f);
-  bool          useRaytracer = true;
-
-
-  helloVk.setupGlfwCallbacks(window);
-  ImGui_ImplGlfw_InitForVulkan(window, true);
+	auto window = renderContext->window();
+	helloVk.setupGlfwCallbacks(window);
+	ImGui_ImplGlfw_InitForVulkan(window, true);
 
 	// Shader reload
 	auto shadersFolder = std::string(PROJECT_ABSDIRECTORY) + "/shaders";
@@ -318,11 +265,6 @@ int main(int argc, char** argv)
   helloVk.getDevice().waitIdle();
   helloVk.destroyResources();
   helloVk.destroy();
-
-  vkctx.deinit();
-
-  glfwDestroyWindow(window);
-  glfwTerminate();
 
   return 0;
 }
