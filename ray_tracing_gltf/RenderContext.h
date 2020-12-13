@@ -1,4 +1,4 @@
-//----------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------	------------------------------------------------------------------
 // Copyright 2020 Carmelo J Fdez-Aguera
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this software
@@ -43,6 +43,7 @@ public:
 	uint32_t					graphicsQueueIndex() const { return m_vkctx.m_queueGCT.familyIndex; }
 	// Allocator for buffer, images, acceleration structures
 	nvvk::AllocatorDedicated&	alloc() { return m_alloc; }
+	nvvk::DebugUtil&			debug() { return m_debug; }
 
 	const vk::SurfaceKHR		surface() const { return m_surface; }
 	auto						window() const { return m_window; }
@@ -55,4 +56,5 @@ private:
 	nvvk::Context m_vkctx{};
 	vk::SurfaceKHR m_surface;
 	nvvk::AllocatorDedicated m_alloc;  // Allocator for buffer, images, acceleration structures
+	nvvk::DebugUtil          m_debug;  // Utility to name objects
 };

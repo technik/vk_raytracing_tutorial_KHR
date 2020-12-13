@@ -82,7 +82,6 @@ RenderContext::RenderContext(const nvmath::vec2ui& windowSize, const std::string
 	contextInfo.addDeviceExtension(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
 	contextInfo.addDeviceExtension(VK_KHR_SHADER_CLOCK_EXTENSION_NAME);
 
-
 	// Creating Vulkan base application
 	m_vkctx.initInstance(contextInfo);
 
@@ -95,6 +94,9 @@ RenderContext::RenderContext(const nvmath::vec2ui& windowSize, const std::string
 	// Window need to be opened to get the surface on which to draw
     getVkSurface(m_vkctx.m_instance);
     m_vkctx.setGCTQueueWithPresent(m_surface);
+
+	m_alloc.init(device(), physicalDevice());
+    m_debug.setup(device());
 }
 
 RenderContext::~RenderContext()
