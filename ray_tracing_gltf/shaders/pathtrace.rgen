@@ -59,7 +59,7 @@ bool traceRecursiveRay(vec3 ro, vec3 rd, inout uint seed)
 {
   	uint  rayFlags = gl_RayFlagsOpaqueEXT;
 
-  	float tMin     = 0.001;
+  	float tMin     = 0.0;
   	float tMax     = 10000.0;
 	bool occluded = false;
 	while(!occluded)
@@ -81,7 +81,7 @@ bool traceRecursiveRay(vec3 ro, vec3 rd, inout uint seed)
     	if(prd.baseColor.a == 1.0 || prd.baseColor.a > rnd(seed))
     		return true;
 
-    	ro = prd.world_position.xyz + prd.world_normal * 1e-4 * prd.world_position.w;
+    	ro = prd.world_position.xyz;
     	tMax -= prd.world_position.w;
 	}
 }
@@ -108,6 +108,8 @@ void main()
   	direction = cam.viewInverse * vec4(normalize(target.xyz*pushC.focalDistance-viewSpaceLensSample.xyz), 0);
   }
 
+  //origin.x += 2.0/60 * rnd(seed); // Motion blur
+
   vec3 lightModulation = vec3(1);
   vec3 rayAccumLight = vec3(0);
 
@@ -128,7 +130,7 @@ void main()
 	rayAccumLight += lightModulation * prd.emittance; // Emissive light from the model
     // new ray config for next frame
     vec3 hitNormal = prd.world_normal;
-    origin.xyz = prd.world_position.xyz + hitNormal*1e-4*prd.world_position.w;
+    origin.xyz = prd.world_position.xyz;
     vec3 L;
     const float alpha = prd.roughness * prd.roughness;
 
@@ -156,11 +158,16 @@ void main()
             break; // Ignore specular path
 
         // Scatter ray direction
-        const vec3 tsH = samplingGGXHemisphere(seed, alpha);
-        const vec3 H = tangent*tsH.x + bitangent*tsH.y + hitNormal*tsH.z;
-        L = reflect(direction.xyz, H);
+        float ndl = -1;
+        vec3 tsH, H;
+        //for(int j = 0; j < 2 && ndl <= 0; ++j)
+        {
+	        tsH = samplingGGXHemisphere(seed, alpha);
+	        H = tangent*tsH.x + bitangent*tsH.y + hitNormal*tsH.z;
+	        L = reflect(direction.xyz, H);
+	        ndl = dot(L, hitNormal);	
+        }
 
-        float ndl = dot(L, hitNormal);
         if(ndl > 0)
         {
             ndl = max(1e-4, ndl);
@@ -178,9 +185,10 @@ void main()
         }
         else
         {
-            rayDepth = pushC.maxBounces+1; // Should really do multiple scattering here.
-        }      
+        	rayDepth = pushC.maxBounces+1; // Should really do multiple scattering here.
+        }
     }
+    //break;
 
     // Explicitly sample sun light
     if(rayDepth >= pushC.firstBounce && rayDepth < pushC.maxBounces)

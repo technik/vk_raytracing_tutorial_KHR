@@ -102,6 +102,7 @@ void main()
   const vec3 nrm2 = getNormal(triangleIndex.z);
   vec3 tsNormal = nrm0 * barycentrics.x + nrm1 * barycentrics.y + nrm2 * barycentrics.z;
   prd.world_normal = normalize(vec3(tsNormal * gl_WorldToObjectEXT));
+  prd.world_position.xyz += prd.world_normal.xyz * max(1e-5, 1e-6 * gl_HitTEXT);
 
   // TexCoord
   const vec2 uv0       = getTexCoord(triangleIndex.x);
