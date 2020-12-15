@@ -49,10 +49,27 @@ float SmithGGX_G2Approx(float ndv, float ndl, float a)
     return 0.5 / mix(2*ndl*ndv, ndl+ndv, a);
 }
 
+// Actually returns G1/(2NdV) as it cancels out some terms in the VNDF estimator
+float SmithGGXG1(float ndv, float alpha)
+{
+	float a2 = alpha*alpha;
+	float num = 2*ndv;
+	float den = ndv + sqrt(a2 + (1-a2)*ndv*ndv);
+	return num / max(den,1e-6);
+}
+
+float SmithGGX_G2_over_G1(float ndv, float ndl, float alpha)
+{
+	float a2 = alpha*alpha;
+	float den = ndv + sqrt(a2+(1-a2)*ndv*ndv);
+	return den * 0.5 / mix(2*ndl*ndv, ndl+ndv, alpha);
+}
+
 vec3 F_Schlick(float hdl, vec3 f0) {
     float p = (1-hdl);
     float p2 = p*p;
-    return f0 + (1.0 - f0) * p*p2*p2;
+    float p5 = p*p2*p2;
+    return f0 + (1.0 - f0) * p5;
 }
 
 bool traceRecursiveRay(vec3 ro, vec3 rd, inout uint seed)
@@ -84,6 +101,71 @@ bool traceRecursiveRay(vec3 ro, vec3 rd, inout uint seed)
     	ro = prd.world_position.xyz;
     	tMax -= prd.world_position.w;
 	}
+}
+
+vec3 sunContrib(
+	inout uint seed,
+	in vec3 origin, in vec3 hitNormal, in vec3 eye,
+ 	in float alpha, in vec3 specularColor, in vec3 diffuseColor)
+{
+	vec3 sunDir = sampleConeDirection(seed, pushC.lightPosition, 0.0046);
+    float ndl = dot(sunDir, hitNormal);
+    if(ndl > 0)
+    {
+      	if(!traceRecursiveRay(origin.xyz, sunDir, seed)) // miss, no obstacle
+      	{
+        	vec3 H = normalize(sunDir + eye);
+	        const float ndh = max(0.0, dot(H, hitNormal));
+	        const float hdl = max(0.0, dot(H, sunDir));
+	        const float ndv = max(1e-4, dot(hitNormal, eye));
+	        float D = D_GGX(ndh, alpha);
+	        float G = SmithGGX_G2Approx(ndv, ndl, alpha);
+	        vec3 F = F_Schlick(hdl, specularColor);
+	        vec3 Fr = min(1.0, D*G)*F;
+	        
+	    	if((pushC.renderFlags & FLAG_DIFFUSE_ONLY) > 0)
+	    		Fr *= 0;
+	    	vec3 diffContrib = diffuseColor / M_PI;
+
+	    	if((pushC.renderFlags & FLAG_SPECULAR_ONLY) > 0)
+	    		diffContrib *= 0;
+	      	return (diffContrib + Fr) * pushC.sunIntensity * ndl;
+        }
+    }
+    return vec3(0);
+}
+
+// Derived from:
+// http://jcgt.org/published/0007/04/01/
+// Sampling the GGX Distribution of Visible Normals
+// Eric Heitz, 2018
+vec3 sampleGGXVNDF(inout uint seed, vec3 Ve, float alpha_x, float alpha_y)
+{
+	float U1 = rnd(seed);
+	float U2 = rnd(seed);
+
+	// Transform view direction into hemisphere configuration
+	vec3 Vh = normalize(vec3(alpha_x * Ve.x, alpha_y * Ve.y, Ve.z));
+
+	// Section 4.1: orthonormal basis (with special case if cross product is zero)
+	float lensq = Vh.x * Vh.x + Vh.y * Vh.y;
+	vec3 T1 = lensq > 0 ? vec3(-Vh.y, Vh.x, 0) * inversesqrt(lensq) : vec3(1,0,0);
+	vec3 T2 = cross(Vh, T1);
+
+	// Section 4.2: parameterization of the projected area
+	float r = sqrt(U1);
+	float phi = 2.0 * M_PI * U2;
+	float t1 = r * cos(phi);
+	float t2 = r * sin(phi);
+	float s = 0.5 * (1.0 + Vh.z);
+	t2 = (1.0 - s)*sqrt(1.0 - t1*t1) + s*t2;
+
+	// Section 4.3: reprojection onto hemisphere
+	vec3 Nh = t1*T1 + t2*T2 + sqrt(max(0.0, 1.0 - t1*t1 - t2*t2))*Vh;
+
+	// Transforming the normal back to the ellipsoid configuration
+	vec3 Ne = normalize(vec3(alpha_x * Nh.x, alpha_y * Nh.y, max(0.0, Nh.z)));
+	return Ne;
 }
 
 void main()
@@ -120,11 +202,17 @@ void main()
     if((rayDepth >= pushC.firstBounce || rayDepth == 0)
       && prd.world_position.w < 0) // Always show the background
     {
-      rayAccumLight += lightModulation * prd.emittance;
+    	vec3 skyColor = mix(pushC.clearColor.xyz, vec3(1.0), max(0, min(1, direction.y))) * pushC.skyIntensity;
+
+		if((pushC.renderFlags & FLAG_GREY_FURNACE) > 0)
+		{
+			skyColor = vec3(0.7);
+		}
+      	rayAccumLight += lightModulation * skyColor;
     }
     if(prd.world_position.w < 0) // miss
     {
-      break;
+      	break;
     }
 
 	rayAccumLight += lightModulation * prd.emittance; // Emissive light from the model
@@ -132,7 +220,7 @@ void main()
     vec3 hitNormal = prd.world_normal;
     origin.xyz = prd.world_position.xyz;
     vec3 L;
-    const float alpha = prd.roughness * prd.roughness;
+    float alpha = prd.roughness * prd.roughness;
 
     // Reconstruct PBR material
     vec3 specularColor = mix(vec3(0.04), prd.baseColor.xyz, prd.metallic);
@@ -142,6 +230,7 @@ void main()
     vec3 brdf = vec3(1.0);
     vec3 tangent, bitangent;
     createCoordinateSystem(hitNormal, tangent, bitangent);
+    
     if((seed & 1) > 0) // Diffuse.
     {
       	if(rayDepth == 0 && (pushC.renderFlags & FLAG_SPECULAR_ONLY) > 0)
@@ -157,28 +246,27 @@ void main()
         if(rayDepth == 0 && (pushC.renderFlags & FLAG_DIFFUSE_ONLY) > 0)
             break; // Ignore specular path
 
-        // Scatter ray direction
+        // Scatter ray direction using the distribution of visible normals
+        // Move view vector to tangent space
+		mat3 worldFromTangent = mat3(tangent, bitangent, hitNormal);
+		vec3 tsEye = -direction.xyz * worldFromTangent;
+        const vec3 tsH = sampleGGXVNDF(seed, tsEye, alpha, alpha);
+
         float ndl = -1;
-        vec3 tsH, H;
-        //for(int j = 0; j < 2 && ndl <= 0; ++j)
-        {
-	        tsH = samplingGGXHemisphere(seed, alpha);
-	        H = tangent*tsH.x + bitangent*tsH.y + hitNormal*tsH.z;
-	        L = reflect(direction.xyz, H);
-	        ndl = dot(L, hitNormal);	
-        }
+        vec3 H = tangent*tsH.x + bitangent*tsH.y + hitNormal*tsH.z;
+        L = reflect(direction.xyz, H);
+        
+        ndl = dot(L, hitNormal);
 
         if(ndl > 0)
         {
-            ndl = max(1e-4, ndl);
-            const float ndh = max(1e-3, tsH.z);
-            const float vdh = max(0.0, -dot(H, direction.xyz));
-            const float ndv = max(1e-4, -dot(hitNormal, direction.xyz));
+            const float hdl = max(0.0, dot(H, L));
+            float ndv = max(1e-6, -dot(hitNormal, direction.xyz));
             
-            float G = SmithGGX_G2Approx(ndv, ndl, alpha);
-            float s = min(1.0, G*ndl/ndh);
-            vec3 F = F_Schlick(vdh, specularColor);
-            vec3 Fr = s*F;
+            alpha = 1.0;
+            float G = SmithGGXG1(ndl, alpha);
+            vec3 F = F_Schlick(hdl, specularColor);
+            vec3 Fr = G*F;
 
             // 2 factor to compensate for 50% probability of hitting this light path
             brdf = 2*Fr;
@@ -188,35 +276,14 @@ void main()
         	rayDepth = pushC.maxBounces+1; // Should really do multiple scattering here.
         }
     }
-    //break;
 
     // Explicitly sample sun light
     if(rayDepth >= pushC.firstBounce && rayDepth < pushC.maxBounces)
     {
-    	vec3 sunDir = sampleConeDirection(seed, pushC.lightPosition, 0.0046);
-	    float ndl = dot(sunDir, hitNormal);
-	    if(ndl > 0)
-	    {
-	      	if(!traceRecursiveRay(origin.xyz, sunDir, seed)) // miss, no obstacle
-	      	{
-	        	vec3 H = normalize(sunDir - direction.xyz);
-		        const float ndh = max(0.0, dot(H, hitNormal));
-		        const float hdl = max(0.0, dot(H, sunDir));
-		        const float ndv = max(1e-4, -dot(direction.xyz, hitNormal));
-		        float D = D_GGX(ndh, alpha);
-		        float G = SmithGGX_G2Approx(ndv, ndl, alpha);
-		        vec3 F = F_Schlick(hdl, specularColor);
-		        vec3 Fr = min(1.0, D*G)*F;
-		        
-		    	if((pushC.renderFlags & FLAG_DIFFUSE_ONLY) > 0)
-		    		Fr *= 0;
-		    	vec3 diffContrib = diffuseColor / M_PI;
-
-		    	if((pushC.renderFlags & FLAG_SPECULAR_ONLY) > 0)
-		    		diffContrib *= 0;
-		      	rayAccumLight += lightModulation * (diffContrib + Fr) * pushC.sunIntensity * ndl;
-	        }
-	    }
+    	rayAccumLight += lightModulation * sunContrib(
+    		seed,
+    		origin.xyz, hitNormal, -direction.xyz,
+    		alpha, specularColor, diffuseColor);
     }
 
 	direction.xyz = L;

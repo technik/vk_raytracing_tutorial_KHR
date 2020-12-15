@@ -47,6 +47,7 @@ extern std::vector<std::string> defaultSearchPaths;
 #include "nvvk/shaders_vk.hpp"
 
 #include "RenderContext.h"
+#include "RenderScene.h"
 #include "shaders/binding.glsl"
 
 // Holding the camera matrices
@@ -164,6 +165,7 @@ void HelloVulkan::createDescriptorSetLayout()
   bind.addBinding(
 	  vkDS(B_INDICES, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
   bind.addBinding(vkDS(B_NORMALS, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR));
+  bind.addBinding(vkDS(B_TANGENTS, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR));
   bind.addBinding(vkDS(B_TEXCOORDS, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR));
   bind.addBinding(vkDS(B_MATERIALS, vkDT::eStorageBuffer, 1,
 					   vkSS::eFragment | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
@@ -191,6 +193,7 @@ void HelloVulkan::updateDescriptorSet()
   vk::DescriptorBufferInfo vertexDesc{m_vertexBuffer.buffer, 0, VK_WHOLE_SIZE};
   vk::DescriptorBufferInfo indexDesc{m_indexBuffer.buffer, 0, VK_WHOLE_SIZE};
   vk::DescriptorBufferInfo normalDesc{m_normalBuffer.buffer, 0, VK_WHOLE_SIZE};
+  vk::DescriptorBufferInfo tangentDesc{m_tangentBuffer.buffer, 0, VK_WHOLE_SIZE};
   vk::DescriptorBufferInfo uvDesc{m_uvBuffer.buffer, 0, VK_WHOLE_SIZE};
   vk::DescriptorBufferInfo materialDesc{m_materialBuffer.buffer, 0, VK_WHOLE_SIZE};
   vk::DescriptorBufferInfo matrixDesc{m_matrixBuffer.buffer, 0, VK_WHOLE_SIZE};
@@ -199,6 +202,7 @@ void HelloVulkan::updateDescriptorSet()
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_VERTICES, &vertexDesc));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_INDICES, &indexDesc));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_NORMALS, &normalDesc));
+  writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_TANGENTS, &tangentDesc));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_TEXCOORDS, &uvDesc));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_MATERIALS, &materialDesc));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_MATRICES, &matrixDesc));
@@ -287,6 +291,24 @@ void HelloVulkan::loadScene(const std::string& filename)
 									vkBU::eVertexBuffer | vkBU::eStorageBuffer);
   m_materialBuffer = m_alloc.createBuffer(cmdBuf, m_gltfScene.m_materials, vkBU::eStorageBuffer);
 
+  // Generate or load tangent space
+  std::vector<vec4f> tangents;
+  if(m_gltfScene.m_tangents.size()
+     != m_gltfScene.m_positions.size())  // No tangents provided. Generate them
+  {
+    for(const auto& primitive : m_gltfScene.m_primMeshes)
+    {
+      tangents = RenderScene::generateTangentSpace(m_gltfScene.m_positions, m_gltfScene.m_normals,
+                                      m_gltfScene.m_texcoords0, m_gltfScene.m_indices,
+                                      primitive.indexCount, primitive.vertexCount,
+                                      primitive.firstIndex, primitive.vertexOffset);
+    }
+  }
+  else
+    tangents = m_gltfScene.m_tangents;
+  m_tangentBuffer = m_alloc.createBuffer(cmdBuf, tangents,
+                                        vkBU::eVertexBuffer | vkBU::eStorageBuffer);
+
   // Instance Matrices used by rasterizer
   std::vector<nvmath::mat4f> nodeMatrices;
   for(auto& node : m_gltfScene.m_nodes)
@@ -313,6 +335,7 @@ void HelloVulkan::loadScene(const std::string& filename)
   m_debug.setObjectName(m_vertexBuffer.buffer, "Vertex");
   m_debug.setObjectName(m_indexBuffer.buffer, "Index");
   m_debug.setObjectName(m_normalBuffer.buffer, "Normal");
+  m_debug.setObjectName(m_tangentBuffer.buffer, "Tangent");
   m_debug.setObjectName(m_uvBuffer.buffer, "TexCoord");
   m_debug.setObjectName(m_materialBuffer.buffer, "Material");
   m_debug.setObjectName(m_matrixBuffer.buffer, "Matrix");
@@ -399,6 +422,7 @@ void HelloVulkan::destroyResources()
 
   m_alloc.destroy(m_vertexBuffer);
   m_alloc.destroy(m_normalBuffer);
+  m_alloc.destroy(m_tangentBuffer);
   m_alloc.destroy(m_uvBuffer);
   m_alloc.destroy(m_indexBuffer);
   m_alloc.destroy(m_materialBuffer);

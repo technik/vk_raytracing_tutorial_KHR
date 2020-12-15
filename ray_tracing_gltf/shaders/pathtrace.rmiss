@@ -21,12 +21,5 @@ layout(push_constant) uniform Constants
 
 void main()
 {
-	const vec3 up = vec3(0.5, 0.7, 1.0);
-	prd.emittance = mix(up, vec3(1.0), gl_WorldRayDirectionEXT.y) * clearColor.xyz * skyIntensity;
-
-	if((renderFlags & FLAG_GREY_FURNACE) > 0)
-	{
-		prd.emittance = vec3(0.7);
-	}
   	prd.world_position.w = -1.0;
 }
