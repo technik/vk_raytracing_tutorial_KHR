@@ -76,7 +76,7 @@ bool traceRecursiveRay(vec3 ro, vec3 rd, inout uint seed)
 {
   	uint  rayFlags = gl_RayFlagsOpaqueEXT;
 
-  	float tMin     = 0.0;
+  	float tMin     = 0.001;
   	float tMax     = 10000.0;
 	bool occluded = false;
 	while(!occluded)
