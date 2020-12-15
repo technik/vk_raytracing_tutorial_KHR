@@ -169,8 +169,8 @@ void main()
             uint txtId = mat.normalTexture;
             vec3 tsNormal = texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
             tsNormal = pow(tsNormal, vec3(1/2.2)) + vec3(0,0,1e-4) + vec3(0,0,1e-2);
-            tsNormal = normalize(tsNormal * 255.0 - 127.0);
-            worldNormal = worldFromTangent * tsNormal;
+            tsNormal = tsNormal * 255.0 - 127.0;
+            worldNormal = normalize(worldFromTangent * tsNormal);
         }
 
         // Metallic & Roughness

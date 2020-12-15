@@ -76,7 +76,7 @@ bool traceRecursiveRay(vec3 ro, vec3 rd, inout uint seed)
 {
   	uint  rayFlags = gl_RayFlagsOpaqueEXT;
 
-  	float tMin     = 0.001;
+  	float tMin     = 0.0001;
   	float tMax     = 10000.0;
 	bool occluded = false;
 	while(!occluded)
@@ -231,6 +231,7 @@ void main()
     vec3 tangent, bitangent;
     createCoordinateSystem(hitNormal, tangent, bitangent);
     
+    //seed = 1;
     if((seed & 1) > 0) // Diffuse.
     {
       	if(rayDepth == 0 && (pushC.renderFlags & FLAG_SPECULAR_ONLY) > 0)
@@ -240,6 +241,9 @@ void main()
 		const float ndl = max(0.0, dot(L, hitNormal));
 		// 2 factor to compensate for 50% probability of hitting this light path
 		brdf = 2.0 * diffuseColor / M_PI;
+		//brdf = prd.world_normal;
+        //rayAccumLight = hitNormal*0.5+0.5;
+        //break;
     }
     else // Specular
     {
@@ -270,6 +274,8 @@ void main()
 
             // 2 factor to compensate for 50% probability of hitting this light path
             brdf = 2*Fr;
+            //brdf = 2*hitNormal;
+            //rayAccumLight = hitNormal*0.5+0.5;
         }
         else
         {

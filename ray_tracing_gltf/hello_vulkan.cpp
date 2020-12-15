@@ -296,16 +296,18 @@ void HelloVulkan::loadScene(const std::string& filename)
   if(m_gltfScene.m_tangents.size()
      != m_gltfScene.m_positions.size())  // No tangents provided. Generate them
   {
+    m_gltfScene.m_tangents.clear();
     for(const auto& primitive : m_gltfScene.m_primMeshes)
     {
       tangents = RenderScene::generateTangentSpace(m_gltfScene.m_positions, m_gltfScene.m_normals,
                                       m_gltfScene.m_texcoords0, m_gltfScene.m_indices,
                                       primitive.indexCount, primitive.vertexCount,
                                       primitive.firstIndex, primitive.vertexOffset);
+      m_gltfScene.m_tangents.insert(m_gltfScene.m_tangents.end(), tangents.begin(), tangents.end());
     }
   }
-  else
-    tangents = m_gltfScene.m_tangents;
+
+  tangents = m_gltfScene.m_tangents;
   m_tangentBuffer = m_alloc.createBuffer(cmdBuf, tangents,
                                         vkBU::eVertexBuffer | vkBU::eStorageBuffer);
 
