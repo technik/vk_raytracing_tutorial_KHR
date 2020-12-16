@@ -74,33 +74,24 @@ vec3 F_Schlick(float hdl, vec3 f0) {
 
 bool traceRecursiveRay(vec3 ro, vec3 rd, inout uint seed)
 {
-  	uint  rayFlags = gl_RayFlagsOpaqueEXT;
-
-  	float tMin     = 0.0001;
+  	uint  rayFlags = 0;//gl_RayFlagsOpaqueEXT;
   	float tMax     = 10000.0;
-	bool occluded = false;
-	while(!occluded)
-	{
-		traceRayEXT(topLevelAS, // acceleration structure
-                rayFlags,       // rayFlags
-                0xFF,           // cullMask
-                0,              // sbtRecordOffset
-                0,              // sbtRecordStride
-                0,              // missIndex
-                ro,            	// ray origin
-                tMin,           // ray min range
-                rd,         	// ray direction
-                tMax,           // ray max range
-                0               // payload (location = 0)
-    	);
-    	if(prd.world_position.w < 0 || prd.world_position.w >= tMax)
-    		return false;
-    	if(prd.baseColor.a == 1.0 || prd.baseColor.a > rnd(seed))
-    		return true;
 
-    	ro = prd.world_position.xyz;
-    	tMax -= prd.world_position.w;
-	}
+	traceRayEXT(topLevelAS, // acceleration structure
+        rayFlags,       // rayFlags
+        0xFF,           // cullMask
+        0,              // sbtRecordOffset
+        0,              // sbtRecordStride
+        0,              // missIndex
+        ro,            	// ray origin
+        0.0,           // ray min range
+        rd,         	// ray direction
+        tMax,           // ray max range
+        0               // payload (location = 0)
+    	);
+
+    return prd.world_position.w >= 0;
+    //ro = prd.world_position.xyz + s * prd.world_normal * max(1e-5, 1e-6 * t);
 }
 
 vec3 sunContrib(
@@ -171,10 +162,9 @@ vec3 sampleGGXVNDF(inout uint seed, vec3 Ve, float alpha_x, float alpha_y)
 void main()
 {
   // Initialize the random number
-  uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, int(clockARB()));
+  prd.seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, int(clockARB()));
 
-  //const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);//vec2(rnd(seed), rnd(seed));
-  const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(rnd(seed), rnd(seed));
+  const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(rnd(prd.seed), rnd(prd.seed));
   const vec2 inUV        = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
   vec2       d           = inUV * 2.0 - 1.0;
 
@@ -184,7 +174,7 @@ void main()
 
   if((pushC.renderFlags & FLAG_DOF) > 0)
   {
-  	vec4 viewSpaceLensSample = vec4(sampleDisk(seed, pushC.lensRadius) * vec2(1.0, float(gl_LaunchSizeEXT.x)/gl_LaunchSizeEXT.y), 0, 1);
+  	vec4 viewSpaceLensSample = vec4(sampleDisk(prd.seed, pushC.lensRadius) * vec2(1.0, float(gl_LaunchSizeEXT.x)/gl_LaunchSizeEXT.y), 0, 1);
   	origin = cam.viewInverse * viewSpaceLensSample;
 
   	direction = cam.viewInverse * vec4(normalize(target.xyz*pushC.focalDistance-viewSpaceLensSample.xyz), 0);
@@ -197,7 +187,7 @@ void main()
 
   for(int rayDepth = 0; rayDepth <= pushC.maxBounces; rayDepth++)
   {
-  	traceRecursiveRay(origin.xyz, direction.xyz, seed);
+  	traceRecursiveRay(origin.xyz, direction.xyz, prd.seed);
 
     if((rayDepth >= pushC.firstBounce || rayDepth == 0)
       && prd.world_position.w < 0) // Always show the background
@@ -218,7 +208,7 @@ void main()
 	rayAccumLight += lightModulation * prd.emittance; // Emissive light from the model
     // new ray config for next frame
     vec3 hitNormal = prd.world_normal;
-    origin.xyz = prd.world_position.xyz;
+    origin.xyz = prd.world_position.xyz + hitNormal * max(1e-6, 1e-6 * prd.world_position.w);
     vec3 L;
     float alpha = prd.roughness * prd.roughness;
 
@@ -230,20 +220,26 @@ void main()
     vec3 brdf = vec3(1.0);
     vec3 tangent, bitangent;
     createCoordinateSystem(hitNormal, tangent, bitangent);
+
+    // Explicitly sample sun light
+    if(rayDepth >= pushC.firstBounce && rayDepth < pushC.maxBounces)
+    {
+    	rayAccumLight += lightModulation * sunContrib(
+    		prd.seed,
+    		origin.xyz, hitNormal, -direction.xyz,
+    		alpha, specularColor, diffuseColor);
+    }
     
     //seed = 1;
-    if((seed & 1) > 0) // Diffuse.
+    if((prd.seed & 1) > 0) // Diffuse.
     {
       	if(rayDepth == 0 && (pushC.renderFlags & FLAG_SPECULAR_ONLY) > 0)
        		break; // Ignore diffuse path
 
-		L = samplingCosHemisphere(seed, tangent, bitangent, hitNormal);
+		L = samplingCosHemisphere(prd.seed, tangent, bitangent, hitNormal);
 		const float ndl = max(0.0, dot(L, hitNormal));
 		// 2 factor to compensate for 50% probability of hitting this light path
 		brdf = 2.0 * diffuseColor / M_PI;
-		//brdf = prd.world_normal;
-        //rayAccumLight = hitNormal*0.5+0.5;
-        //break;
     }
     else // Specular
     {
@@ -254,7 +250,7 @@ void main()
         // Move view vector to tangent space
 		mat3 worldFromTangent = mat3(tangent, bitangent, hitNormal);
 		vec3 tsEye = -direction.xyz * worldFromTangent;
-        const vec3 tsH = sampleGGXVNDF(seed, tsEye, alpha, alpha);
+        const vec3 tsH = sampleGGXVNDF(prd.seed, tsEye, alpha, alpha);
 
         float ndl = -1;
         vec3 H = tangent*tsH.x + bitangent*tsH.y + hitNormal*tsH.z;
@@ -274,22 +270,11 @@ void main()
 
             // 2 factor to compensate for 50% probability of hitting this light path
             brdf = 2*Fr;
-            //brdf = 2*hitNormal;
-            //rayAccumLight = hitNormal*0.5+0.5;
         }
         else
         {
-        	rayDepth = pushC.maxBounces+1; // Should really do multiple scattering here.
+        	break; // Should really do multiple scattering here.
         }
-    }
-
-    // Explicitly sample sun light
-    if(rayDepth >= pushC.firstBounce && rayDepth < pushC.maxBounces)
-    {
-    	rayAccumLight += lightModulation * sunContrib(
-    		seed,
-    		origin.xyz, hitNormal, -direction.xyz,
-    		alpha, specularColor, diffuseColor);
     }
 
 	direction.xyz = L;

@@ -23,6 +23,7 @@
 #include "nvvk/shaders_vk.hpp"
 
 #include <vector>
+#include <iostream>
 
 extern std::vector<std::string> defaultSearchPaths;
 
@@ -32,24 +33,28 @@ RaytracingPipeline::RaytracingPipeline(
 	const vk::PhysicalDeviceRayTracingPropertiesKHR& rtProperties,
 	std::vector<std::string>& rayGenShaders,
 	std::vector<std::string>& missShaders,
+	std::vector<std::string>& anyHitShaders,
 	std::vector<std::string>& closestHitShaders,
 	PipelineLayoutInfo&& layoutInfo)
-    : m_device(device)
-    , m_alloc(alloc)
-    , m_progSize(rtProperties.shaderGroupBaseAlignment)
-    , m_rayGenShaders(rayGenShaders)
-    , m_missShaders(missShaders)
-    , m_closestHitShaders(closestHitShaders)
-    , m_layoutInfo(std::forward<PipelineLayoutInfo>(layoutInfo))
+	: m_device(device)
+	, m_alloc(alloc)
+	, m_progSize(rtProperties.shaderGroupBaseAlignment)
+	, m_rayGenShaders(rayGenShaders)
+	, m_missShaders(missShaders)
+	, m_anyHitShaders(anyHitShaders)
+	, m_closestHitShaders(closestHitShaders)
+	, m_layoutInfo(std::forward<PipelineLayoutInfo>(layoutInfo))
 {
 	m_rayGenShadersOffset = 0;
 	m_missShadersOffset = (uint32_t)rayGenShaders.size();
-	m_hitShadersOffset    = m_missShadersOffset + (uint32_t)missShaders.size();
+	m_anyHitShadersOffset    = m_missShadersOffset + (uint32_t)missShaders.size();
+	m_cHitShadersOffset    = m_anyHitShadersOffset + (uint32_t)anyHitShaders.size();
 
 	const size_t numModules = rayGenShaders.size() + closestHitShaders.size() + missShaders.size();
 	m_shaderPaths.reserve(numModules);
 	m_shaderPaths.insert(m_shaderPaths.end(), rayGenShaders.begin(), rayGenShaders.end());
 	m_shaderPaths.insert(m_shaderPaths.end(), missShaders.begin(), missShaders.end());
+	m_shaderPaths.insert(m_shaderPaths.end(), anyHitShaders.begin(), anyHitShaders.end());
 	m_shaderPaths.insert(m_shaderPaths.end(), closestHitShaders.begin(), closestHitShaders.end());
 
 	// Pipeline layout
@@ -57,7 +62,8 @@ RaytracingPipeline::RaytracingPipeline(
 
 	// Push constant: we want to be able to update constants used by the shaders
 	vk::PushConstantRange pushConstant{
-		vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eMissKHR,
+		vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR
+		| vk::ShaderStageFlagBits::eMissKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
 		0, m_layoutInfo.pushConstantRangeSize };
 
 	pipelineLayoutCreateInfo.setPushConstantRangeCount(1);
@@ -114,10 +120,10 @@ void RaytracingPipeline::bindDescriptorSets(
 
 void RaytracingPipeline::trace(const vk::CommandBuffer& cmdBuf, const uvec3& size)
 {
-	// Compute offsets into the GPU sbt (could actually be done on reload
+	// Compute offsets into the GPU sbt (could actually be done on reload)
 	vk::DeviceSize rayGenOffset = m_progSize * m_rayGenShadersOffset;
 	vk::DeviceSize missOffset   = m_progSize * m_missShadersOffset;
-	vk::DeviceSize hitOffset    = m_progSize * m_hitShadersOffset;
+	vk::DeviceSize hitOffset    = m_progSize * m_anyHitShadersOffset;
 	vk::DeviceSize sbtSize = m_progSize * m_shaderPaths.size();
 
 	const vk::StridedBufferRegionKHR raygenShaderBindingTable = {m_SBTBuffer.buffer, rayGenOffset, m_progSize, sbtSize};
@@ -137,6 +143,11 @@ void RaytracingPipeline::trace(const vk::CommandBuffer& cmdBuf, const uvec3& siz
 
 bool RaytracingPipeline::tryLoadPipeline()
 {
+	if(m_anyHitShaders.size() != m_closestHitShaders.size())
+	{
+		std::cout << "Error: Number of closest hit and any hit shaders doesn't match\n";
+		return false;
+	}
 	// Destroy old pipelines
 	if(m_stalePipeline)
 	{
@@ -167,7 +178,7 @@ bool RaytracingPipeline::tryLoadPipeline()
 	std::vector<vk::PipelineShaderStageCreateInfo> stages;
 	stages.reserve(numModules);
 	m_shaderGroups.clear();
-	m_shaderGroups.reserve(numModules);
+	m_shaderGroups.reserve(numModules - m_anyHitShaders.size());
 
 	// Ray generation group
 	vk::RayTracingShaderGroupCreateInfoKHR rayGenGroup {
@@ -177,7 +188,7 @@ bool RaytracingPipeline::tryLoadPipeline()
 
 	for(uint32_t i = 0; i < m_rayGenShaders.size(); ++i)
 	{
-		rayGenGroup.setGeneralShader(m_rayGenShadersOffset+i);
+		rayGenGroup.setGeneralShader(stages.size());
 		stages.push_back({{}, vk::ShaderStageFlagBits::eRaygenKHR, modules[i], "main"});
 		m_shaderGroups.push_back(rayGenGroup);
 	}
@@ -190,22 +201,24 @@ bool RaytracingPipeline::tryLoadPipeline()
 
 	for(uint32_t i = 0; i < m_missShaders.size(); ++i)
 	{
-		missGroup.setGeneralShader(m_missShadersOffset + i);
+		missGroup.setGeneralShader(stages.size());
 		stages.push_back({{}, vk::ShaderStageFlagBits::eMissKHR, modules[i+m_missShadersOffset], "main"});
 		m_shaderGroups.push_back(missGroup);
 	}
 
-	// Closest hit group
-	vk::RayTracingShaderGroupCreateInfoKHR closestHitGroup {
+	// Hit groups (any hit + closest hit)
+	vk::RayTracingShaderGroupCreateInfoKHR hitGroup {
 		vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,
 		VK_SHADER_UNUSED_KHR, VK_SHADER_UNUSED_KHR,
 		VK_SHADER_UNUSED_KHR, VK_SHADER_UNUSED_KHR};
 
 	for(uint32_t i = 0; i < m_closestHitShaders.size(); ++i)
 	{
-		closestHitGroup.setClosestHitShader(m_hitShadersOffset + i);
-		stages.push_back({{}, vk::ShaderStageFlagBits::eClosestHitKHR, modules[i+m_hitShadersOffset], "main"});
-		m_shaderGroups.push_back(closestHitGroup);
+		hitGroup.setAnyHitShader(stages.size());
+		stages.push_back({{}, vk::ShaderStageFlagBits::eAnyHitKHR, modules[i+m_anyHitShadersOffset], "main"});
+		hitGroup.setClosestHitShader(stages.size());
+		stages.push_back({{}, vk::ShaderStageFlagBits::eClosestHitKHR, modules[i+m_cHitShadersOffset], "main"});
+		m_shaderGroups.push_back(hitGroup);
 	}
 
 	// Assemble the shader stages and recursion depth info into the ray tracing pipeline

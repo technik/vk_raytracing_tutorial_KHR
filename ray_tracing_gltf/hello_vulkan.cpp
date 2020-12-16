@@ -166,7 +166,7 @@ void HelloVulkan::createDescriptorSetLayout()
 	  vkDS(B_INDICES, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
   bind.addBinding(vkDS(B_NORMALS, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR));
   bind.addBinding(vkDS(B_TANGENTS, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR));
-  bind.addBinding(vkDS(B_TEXCOORDS, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR));
+  bind.addBinding(vkDS(B_TEXCOORDS, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
   bind.addBinding(vkDS(B_MATERIALS, vkDT::eStorageBuffer, 1,
 					   vkSS::eFragment | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
   bind.addBinding(vkDS(B_MATRICES, vkDT::eStorageBuffer, 1,
@@ -815,6 +815,7 @@ void HelloVulkan::createRtPipeline()
 	std::vector<std::string> rayGenShaders = {"shaders/pathtrace.rgen.spv"};
 	std::vector<std::string> missShaders = {"shaders/pathtrace.rmiss.spv"};
 	std::vector<std::string> chitShaders = {"shaders/pathtrace.rchit.spv"};
+	std::vector<std::string> anyHitShaders = {"shaders/pathtrace.rahit.spv"};
 
 	RaytracingPipeline::PipelineLayoutInfo pipelineLayout;
 	pipelineLayout.descSetLayouts = {m_rtDescSetLayout, m_descSetLayout};
@@ -822,7 +823,7 @@ void HelloVulkan::createRtPipeline()
 
 	m_referencePTPipeline = std::make_unique<RaytracingPipeline>(
 		m_device, m_alloc, m_rtProperties,
-		rayGenShaders, missShaders, chitShaders,
+		rayGenShaders, missShaders, anyHitShaders, chitShaders,
 		std::move(pipelineLayout)
 	);
 }

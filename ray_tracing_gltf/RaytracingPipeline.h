@@ -46,6 +46,7 @@ public:
 		const vk::PhysicalDeviceRayTracingPropertiesKHR& rtProperties,
 		std::vector<std::string>& rayGenShaders,
 		std::vector<std::string>& missShaders,
+		std::vector<std::string>& anyHitShaders,
 		std::vector<std::string>& closestHitShaders,
 		PipelineLayoutInfo&&
 		);
@@ -81,11 +82,13 @@ private:
 
 	uint32_t m_rayGenShadersOffset;
 	uint32_t m_missShadersOffset;
-	uint32_t m_hitShadersOffset;
+	uint32_t m_cHitShadersOffset;
+	uint32_t m_anyHitShadersOffset;
 
 	std::vector<std::string> m_rayGenShaders;
-	std::vector<std::string> m_closestHitShaders;
 	std::vector<std::string> m_missShaders;
+	std::vector<std::string> m_anyHitShaders;
+	std::vector<std::string> m_closestHitShaders;
 
 	std::vector<std::string> m_shaderPaths;
 	std::vector<vk::RayTracingShaderGroupCreateInfoKHR> m_shaderGroups;
@@ -100,7 +103,8 @@ inline void RaytracingPipeline::pushConstant(const vk::CommandBuffer& cmdBuf, co
 {
   cmdBuf.pushConstants<T>(m_pipelineLayout,
                           vk::ShaderStageFlagBits::eRaygenKHR
-                              | vk::ShaderStageFlagBits::eClosestHitKHR
-                              | vk::ShaderStageFlagBits::eMissKHR,
+                              | vk::ShaderStageFlagBits::eMissKHR
+                              | vk::ShaderStageFlagBits::eAnyHitKHR
+                              | vk::ShaderStageFlagBits::eClosestHitKHR,
                           0, pushConstant);
 }

@@ -89,7 +89,7 @@ void main()
     // Getting the 'first index' for this mesh (offset of the mesh + offset of the triangle)
     uint indexOffset  = pinfo.indexOffset + (3 * gl_PrimitiveID);
     uint vertexOffset = pinfo.vertexOffset;           // Vertex offset as defined in glTF
-    uint matIndex     = max(0, pinfo.materialIndex);  // material of primitive mesh
+    int matIndex      = pinfo.materialIndex;  // material of primitive mesh
 
     // Getting the 3 indices of the triangle (local)
     ivec3 triangleIndex = ivec3(indices[nonuniformEXT(indexOffset + 0)],  //
@@ -113,7 +113,7 @@ void main()
     const vec3 nrm2 = getNormal(triangleIndex.z);
     vec3 msNormal = nrm0 * barycentrics.x + nrm1 * barycentrics.y + nrm2 * barycentrics.z;
     vec3 worldNormal = normalize(vec3(msNormal * gl_WorldToObjectEXT));
-    prd.world_position.xyz += worldNormal * max(1e-6, 1e-6 * gl_HitTEXT);
+    //prd.world_position.xyz += worldNormal * max(1e-6, 1e-6 * gl_HitTEXT);
 
     // Tangent
     vec4 tan0 = getTangent(triangleIndex.x);
@@ -154,15 +154,6 @@ void main()
             prd.baseColor.xyz = vec3(0.85);
             prd.emittance.xyz = vec3(0.0);
         }
-        prd.alphaMode = mat.alphaMode;
-        // Alpha
-        if(mat.alphaMode == 0.0) // Opaque
-        {
-            prd.baseColor.a = 1.0;
-        } else if(mat.alphaMode == 1) // Mask
-        {
-            prd.baseColor.a = prd.baseColor.a < mat.alphaCutoff ? 0.0 : 1.0;
-        } // Blend. Leave coverage as it is
 
         if(mat.normalTexture >= 0)
         {

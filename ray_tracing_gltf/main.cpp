@@ -79,13 +79,13 @@ static int const SAMPLE_HEIGHT = 720;
 int main(int argc, char** argv)
 {
 	//std::string fileName = "D:/repos/assets/glTF-Sample-Models/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf";
-	//std::string fileName = "D:/repos/assets/glTF-Sample-Models/2.0/SciFiHelmet/glTF/SciFiHelmet.gltf";
+	std::string fileName = "D:/repos/assets/glTF-Sample-Models/2.0/SciFiHelmet/glTF/SciFiHelmet.gltf";
 	//std::string fileName = "D:/repos/assets/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
 	//std::string fileName = "D:/repos/assets/glTF-Sample-Models/2.0/TransmissionTest/glTF/TransmissionTest.gltf";
-	std::string fileName = "E:/repos/rev/samples/gltfViewer/bin/aventador/scene.gltf";
+	//std::string fileName = "E:/repos/rev/samples/gltfViewer/bin/aventador/scene.gltf";
 	if(argc > 1)
 	{
-		//fileName = argv[1];
+		fileName = argv[1];
 	}
 	else
 	{
