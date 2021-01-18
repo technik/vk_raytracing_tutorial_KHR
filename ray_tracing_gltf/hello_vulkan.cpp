@@ -291,7 +291,7 @@ void HelloVulkan::loadScene(const std::string& filename)
   for(auto& m : m_gltfScene.m_materials)
   {
     shadeMaterials.emplace_back(
-        GltfShadeMaterial{m.pbrBaseColorFactor, m.pbrBaseColorTexture, m.emissiveFactor});
+        GltfShadeMaterial{m.pbrBaseColorFactor, m.pbrBaseColorTexture, m.emissiveFactor, m.emissiveTexture });
   }
   m_materialBuffer = m_alloc.createBuffer(cmdBuf, shadeMaterials, vkBU::eStorageBuffer);
 
@@ -327,6 +327,14 @@ void HelloVulkan::loadScene(const std::string& filename)
 
   dt = std::chrono::duration_cast<std::chrono::milliseconds>(timer.now() - t0);
   LOGI("Total Load time: %d\n", dt.count());
+
+  if (!m_gltfScene.m_cameras.empty())
+  {
+	  // Load first camera by default
+	  auto& sceneCam = tmodel.cameras.front();
+	  CameraManip.setFov(sceneCam.perspective.yfov * 180);
+	  CameraManip.setMatrix(m_gltfScene.m_cameras.front().worldMatrix);
+  }
 }
 
 

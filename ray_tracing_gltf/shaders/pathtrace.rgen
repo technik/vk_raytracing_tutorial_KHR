@@ -78,7 +78,6 @@ void main()
     hitValue += prd.hitValue * curWeight;
     curWeight *= prd.weight;
   }
-  hitValue *= 20.0;
 
   // Do accumulation over time
   if(pushC.frame > 0)

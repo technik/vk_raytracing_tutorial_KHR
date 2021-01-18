@@ -4,6 +4,7 @@ struct GltfShadeMaterial
   vec4 pbrBaseColorFactor;
   int  pbrBaseColorTexture;
   vec3 emissiveFactor;
+  int  emissiveTexture;
 };
 
 #ifndef __cplusplus

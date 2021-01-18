@@ -109,6 +109,11 @@ void main()
   // Material of the object
   GltfShadeMaterial mat       = materials[nonuniformEXT(matIndex)];
   vec3              emittance = mat.emissiveFactor;
+  if(mat.emissiveTexture >= 0)
+  {
+    uint txtId = mat.emissiveTexture;
+    emittance *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
+  }
 
   // Pick a random direction from here and keep going.
   vec3 tangent, bitangent;
