@@ -50,6 +50,8 @@ extern std::vector<std::string> defaultSearchPaths;
 #include "shaders/binding.glsl"
 #include "shaders/gltf.glsl"
 
+#include <chrono>
+
 
 // Holding the camera matrices
 struct CameraMatrices
@@ -227,6 +229,12 @@ void HelloVulkan::createGraphicsPipeline()
   m_debug.setObjectName(m_graphicsPipeline, "Graphics");
 }
 
+
+bool isBinaryFile(const string& path)
+{
+  return path.substr(path.size() - 4) == ".glb";
+}
+
 //--------------------------------------------------------------------------------------------------
 // Loading the OBJ file and setting up all buffers
 //
@@ -237,14 +245,21 @@ void HelloVulkan::loadScene(const std::string& filename)
   tinygltf::TinyGLTF tcontext;
   std::string        warn, error;
 
-  LOGI("Loading file: %s", filename.c_str());
-  if(!tcontext.LoadASCIIFromFile(&tmodel, &error, &warn, filename))
+  LOGI("Loading file: %s\n", filename.c_str());
+  auto timer = std::chrono::high_resolution_clock();
+  auto t0    = timer.now();
+  bool loadSuccess =
+      isBinaryFile(filename) ? tcontext.LoadBinaryFromFile(&tmodel, &error, &warn, filename) : tcontext.LoadASCIIFromFile(&tmodel, &error, &warn, filename))
+  if(!loadSuccess)
   {
     assert(!"Error while loading scene");
   }
+
+  auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(timer.now() - t0);
+  LOGI("Gltf Load time: %d\n", dt.count());
+
   LOGW(warn.c_str());
   LOGE(error.c_str());
-
 
   m_gltfScene.importMaterials(tmodel);
   m_gltfScene.importDrawableNodes(tmodel,
@@ -305,6 +320,9 @@ void HelloVulkan::loadScene(const std::string& filename)
   m_debug.setObjectName(m_uvBuffer.buffer, "TexCoord");
   m_debug.setObjectName(m_materialBuffer.buffer, "Material");
   m_debug.setObjectName(m_matrixBuffer.buffer, "Matrix");
+
+  dt = std::chrono::duration_cast<std::chrono::milliseconds>(timer.now() - t0);
+  LOGI("Total Load time: %d\n", dt.count());
 }
 
 

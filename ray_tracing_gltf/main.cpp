@@ -77,8 +77,8 @@ void renderUI(HelloVulkan& helloVk)
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
-static int const SAMPLE_WIDTH  = 1280;
-static int const SAMPLE_HEIGHT = 720;
+static int const SAMPLE_WIDTH  = 2560;// 1280;
+static int const SAMPLE_HEIGHT = 1440;// 720;
 
 //--------------------------------------------------------------------------------------------------
 // Application Entry
@@ -177,7 +177,8 @@ int main(int argc, char** argv)
   helloVk.initGUI(0);  // Using sub-pass 0
 
   // Creation of the example
-  helloVk.loadScene(nvh::findFile("media/scenes/cornellBox.gltf", defaultSearchPaths, true));
+  // helloVk.loadScene(nvh::findFile("media/scenes/cornellBox.gltf", defaultSearchPaths, true));
+  helloVk.loadScene(nvh::findFile("D:\\repos\\assets\\ZeroDay_v1\\MEASURE_ONE\\glb\\out\\measure_one.glb", defaultSearchPaths, true));
 
 
   helloVk.createOffscreenRender();
