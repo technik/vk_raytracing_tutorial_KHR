@@ -35,9 +35,9 @@ public:
 	void addSimpleArgument(std::string_view tag, const SimpleDelegate& _delegate);
 
 	template <class T>
-	void addOption(std::string_view tag, T* dst);
+	void addOption(std::string_view tag, T& dst);
 
-	void parse(int argc, const char** argv);
+	void parse(int argc, char** argv);
 
 private:
 	std::unordered_map<std::string, FlagDelegate>	  m_flags;
@@ -45,19 +45,19 @@ private:
 };
 
 template <class T>
-inline void CmdLineParser::addOption(std::string_view tag, T* dst)
+inline void CmdLineParser::addOption(std::string_view tag, T& dst)
 {
 	addSimpleArgument(tag, [=](const char* value)
 	{
 		std::stringstream ss;
 		ss << value;
-		ss >> *dst;
+		ss >> dst;
 	});
 }
 
 // Partial specialization for std::string
 template <>
-inline void CmdLineParser::addOption(std::string_view tag, std::string* dst)
+inline void CmdLineParser::addOption(std::string_view tag, std::string& dst)
 {
-  addSimpleArgument(tag, [=](const char* value) { *dst = value; });
+  addSimpleArgument(tag, [&](const char* value) { dst = value; });
 }

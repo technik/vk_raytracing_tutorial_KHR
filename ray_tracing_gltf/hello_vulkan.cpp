@@ -230,7 +230,7 @@ void HelloVulkan::createGraphicsPipeline()
 }
 
 
-bool isBinaryFile(const string& path)
+bool isBinaryFile(const std::string& path)
 {
   return path.substr(path.size() - 4) == ".glb";
 }
@@ -240,6 +240,8 @@ bool isBinaryFile(const string& path)
 //
 void HelloVulkan::loadScene(const std::string& filename)
 {
+	if (filename.size() < 5) // Need a filename with extension
+		return;
   using vkBU = vk::BufferUsageFlagBits;
   tinygltf::Model    tmodel;
   tinygltf::TinyGLTF tcontext;
@@ -249,7 +251,7 @@ void HelloVulkan::loadScene(const std::string& filename)
   auto timer = std::chrono::high_resolution_clock();
   auto t0    = timer.now();
   bool loadSuccess =
-      isBinaryFile(filename) ? tcontext.LoadBinaryFromFile(&tmodel, &error, &warn, filename) : tcontext.LoadASCIIFromFile(&tmodel, &error, &warn, filename))
+	  isBinaryFile(filename) ? tcontext.LoadBinaryFromFile(&tmodel, &error, &warn, filename) : tcontext.LoadASCIIFromFile(&tmodel, &error, &warn, filename);
   if(!loadSuccess)
   {
     assert(!"Error while loading scene");

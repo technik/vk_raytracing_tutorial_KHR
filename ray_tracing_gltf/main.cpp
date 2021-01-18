@@ -45,6 +45,8 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include "nvvk/commands_vk.hpp"
 #include "nvvk/context_vk.hpp"
 
+#include "cmdLineParser.h"
+
 
 //////////////////////////////////////////////////////////////////////////
 #define UNUSED(x) (void)(x)
@@ -86,6 +88,11 @@ static int const SAMPLE_HEIGHT = 1440;// 720;
 int main(int argc, char** argv)
 {
   UNUSED(argc);
+
+  CmdLineParser options;
+  std::string m_scene;
+  options.addOption("scene", m_scene);
+  options.parse(argc, argv);
 
   // Setup GLFW window
   glfwSetErrorCallback(onErrorCallback);
@@ -177,8 +184,7 @@ int main(int argc, char** argv)
   helloVk.initGUI(0);  // Using sub-pass 0
 
   // Creation of the example
-  // helloVk.loadScene(nvh::findFile("media/scenes/cornellBox.gltf", defaultSearchPaths, true));
-  helloVk.loadScene(nvh::findFile("D:\\repos\\assets\\ZeroDay_v1\\MEASURE_ONE\\glb\\out\\measure_one.glb", defaultSearchPaths, true));
+  helloVk.loadScene(nvh::findFile(m_scene, defaultSearchPaths, true));
 
 
   helloVk.createOffscreenRender();

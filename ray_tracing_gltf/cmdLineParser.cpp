@@ -39,7 +39,7 @@ void CmdLineParser::addSimpleArgument(std::string_view _tag, const SimpleDelegat
 }
 
 //----------------------------------------------------------------------------------------------
-void CmdLineParser::parse(int _argc, const char** _argv)
+void CmdLineParser::parse(int _argc, char** _argv)
 {
 	for (int i = 0; i < _argc; ++i)
 	{
