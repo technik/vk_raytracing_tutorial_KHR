@@ -37,7 +37,8 @@ void main()
   // Initialize the random number
   uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, int(clockARB()));
 
-  const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
+  vec2 pixelOffset = vec2(rnd(seed), rnd(seed));
+  const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + pixelOffset;
   const vec2 inUV        = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
   vec2       d           = inUV * 2.0 - 1.0;
 
@@ -77,6 +78,7 @@ void main()
     hitValue += prd.hitValue * curWeight;
     curWeight *= prd.weight;
   }
+  hitValue *= 20.0;
 
   // Do accumulation over time
   if(pushC.frame > 0)

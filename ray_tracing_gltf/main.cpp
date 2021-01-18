@@ -45,6 +45,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include "nvvk/commands_vk.hpp"
 #include "nvvk/context_vk.hpp"
 
+#include "FolderWatcher.h"
 #include "cmdLineParser.h"
 
 
@@ -199,7 +200,6 @@ int main(int argc, char** argv)
   helloVk.createTopLevelAS();
   helloVk.createRtDescriptorSet();
   helloVk.createRtPipeline();
-  helloVk.createRtShaderBindingTable();
 
   helloVk.createPostDescriptor();
   helloVk.createPostPipeline();
@@ -213,9 +213,24 @@ int main(int argc, char** argv)
   helloVk.setupGlfwCallbacks(window);
   ImGui_ImplGlfw_InitForVulkan(window, true);
 
+  // Shader reload
+  auto shadersFolder = std::string(PROJECT_ABSDIRECTORY) + "/shaders";
+  auto shaderWatcher = FolderWatcher(std::filesystem::path(shadersFolder));
+  shaderWatcher.listen([&helloVk](auto& changes) {
+	  for (auto& path : changes) {
+		  if (path.string().find(".spv") != std::string::npos)
+		  {
+			  helloVk.invalidateShaders();
+			  helloVk.resetFrame();
+			  return;
+		  }
+	  }
+	  });
+
   // Main loop
   while(!glfwWindowShouldClose(window))
   {
+	shaderWatcher.update();
     glfwPollEvents();
     if(helloVk.isMinimized())
       continue;

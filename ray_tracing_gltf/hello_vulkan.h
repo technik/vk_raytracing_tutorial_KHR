@@ -37,6 +37,8 @@
 #include "nvh/gltfscene.hpp"
 #include "nvvk/raytraceKHR_vk.hpp"
 
+#include "RaytracingPipeline.h"
+
 //--------------------------------------------------------------------------------------------------
 // Simple rasterizer of OBJ objects
 // - Each OBJ loaded are stored in an `ObjModel` and referenced by a `ObjInstance`
@@ -135,7 +137,7 @@ public:
   void createRtDescriptorSet();
   void updateRtDescriptorSet();
   void createRtPipeline();
-  void createRtShaderBindingTable();
+  void invalidateShaders() { m_rtPipeline->invalidate(); }
   void raytrace(const vk::CommandBuffer& cmdBuf, const nvmath::vec4f& clearColor);
   void updateFrame();
   void resetFrame();
@@ -146,10 +148,7 @@ public:
   vk::DescriptorPool                                  m_rtDescPool;
   vk::DescriptorSetLayout                             m_rtDescSetLayout;
   vk::DescriptorSet                                   m_rtDescSet;
-  std::vector<vk::RayTracingShaderGroupCreateInfoKHR> m_rtShaderGroups;
-  vk::PipelineLayout                                  m_rtPipelineLayout;
-  vk::Pipeline                                        m_rtPipeline;
-  nvvk::Buffer                                        m_rtSBTBuffer;
+  std::unique_ptr<RaytracingPipeline>					m_rtPipeline;
 
   struct RtPushConstant
   {
