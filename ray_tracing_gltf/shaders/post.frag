@@ -14,5 +14,12 @@ void main()
 {
   vec2  uv    = outUV;
   float gamma = 1. / 2.2;
-  fragColor   = pow(texture(noisyTxt, uv).rgba, vec4(gamma));
+  vec3 s = texture(noisyTxt, uv).rgb;
+
+  // Tone mapping
+  float energy = sqrt(dot(s,s))/3;
+  vec3 color = mix(s, vec3(energy), energy/(energy+1000*100));
+  color = color / (color + 1);
+
+  fragColor   = vec4(pow(color, vec3(gamma)), 1.0);
 }

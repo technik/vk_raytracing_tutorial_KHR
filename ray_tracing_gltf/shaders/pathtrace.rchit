@@ -105,46 +105,45 @@ void main()
   const vec2 uv2       = getTexCoord(triangleIndex.z);
   vec2 texcoord0 = uv0 * barycentrics.x + uv1 * barycentrics.y + uv2 * barycentrics.z;
 
-  // https://en.wikipedia.org/wiki/Path_tracing
+  prd.worldPos.xyz = world_position;
+  prd.worldPos.w = gl_HitTEXT;
+  prd.worldNormal = world_normal;
+
   // Material of the object
-  GltfShadeMaterial mat       = materials[nonuniformEXT(matIndex)];
-
-  // Pick a random direction from here and keep going.
-  vec3 tangent, bitangent;
-  createCoordinateSystem(world_normal, tangent, bitangent);
-  vec3 rayOrigin    = world_position;
-  vec3 rayDirection = samplingHemisphere(prd.seed, tangent, bitangent, world_normal);
-
-  // Probability of the newRay (cosine distributed)
-  const float p = 1 / M_PI;
-
-  // Compute the BRDF for this ray (assuming Lambertian reflection)
-  float cos_theta = dot(rayDirection, world_normal);
-  vec3  albedo    = mat.pbrBaseColorFactor.xyz;
-  if(mat.pbrBaseColorTexture > -1)
+  if(matIndex >= 0)
   {
-    uint txtId = mat.pbrBaseColorTexture;
-    texcoord0 = min(vec2(1.0),max(texcoord0, vec2(0.0)));
-    albedo *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
-  }
-  vec3 BRDF = albedo / M_PI;
+      GltfShadeMaterial mat = materials[nonuniformEXT(matIndex)];
+      // Emissive color
+      prd.emittance = mat.emissiveFactor;
+      if(mat.emissiveTexture > -1)
+      {
+          uint txtId = mat.emissiveTexture;
+          prd.emittance *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
+      }
+      // baseColor
+      prd.baseColor = mat.pbrBaseColorFactor.xyz;
+      if(mat.pbrBaseColorTexture > -1)
+      {
+          uint txtId = mat.pbrBaseColorTexture;
+          prd.baseColor *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
+      }
 
-  vec3              emittance = mat.emissiveFactor;
-  if(mat.emissiveTexture > -1)
+      // Metallic & Roughness
+      /*prd.metallic = mat.pbrMetallicFactor;
+      prd.roughness = mat.pbrRoughnessFactor;
+      if(mat.pbrMetallicRoughnessTexture > -1)
+      {
+          uint txtId = mat.pbrMetallicRoughnessTexture;
+          vec3 metallicRoughness = texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
+          prd.metallic *= metallicRoughness.b;
+          prd.roughness *= metallicRoughness.g;
+      }*/
+  }
+  else
   {
-    //uint txtId = mat.pbrBaseColorTexture;
-    uint txtId = max(0, mat.emissiveTexture);
-    emittance *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz*100;
+      prd.baseColor = vec3(1);
+      prd.emittance = vec3(0);
+      prd.metallic = 0.0;
+      prd.roughness = 1.0;
   }
-
-  prd.rayOrigin    = rayOrigin;
-  prd.rayDirection = rayDirection;
-  prd.hitValue     = emittance;
-  prd.weight       = BRDF * cos_theta / p;
-  return;
-
-  vec3 incoming = prd.hitValue;
-
-  // Apply the Rendering Equation here.
-  prd.hitValue = emittance + (BRDF * incoming * cos_theta / p);
 }

@@ -32,12 +32,35 @@ layout(push_constant) uniform Constants
 }
 pushC;
 
+
+
+bool traceRay(vec3 ro, vec3 rd)
+{
+    uint  rayFlags = 0;//gl_RayFlagsOpaqueEXT;
+    float tMax     = 10000.0;
+
+  traceRayEXT(topLevelAS, // acceleration structure
+        rayFlags,       // rayFlags
+        0xFF,           // cullMask
+        0,              // sbtRecordOffset
+        0,              // sbtRecordStride
+        0,              // missIndex
+        ro,             // ray origin
+        0.0,           // ray min range
+        rd,           // ray direction
+        tMax,           // ray max range
+        0               // payload (location = 0)
+      );
+
+    return prd.worldPos.w >= 0;
+}
+
 void main()
 {
   // Initialize the random number
-  uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, int(clockARB()));
+  prd.seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, int(clockARB()));
 
-  vec2 pixelOffset = vec2(rnd(seed), rnd(seed));
+  vec2 pixelOffset = vec2(rnd(prd.seed), rnd(prd.seed));
   const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + pixelOffset;
   const vec2 inUV        = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
   vec2       d           = inUV * 2.0 - 1.0;
@@ -49,43 +72,39 @@ void main()
   if(true)
   {
     const float focalDistance = 3.0;
-    vec4 viewSpaceLensSample = vec4(sampleDisk(seed, 0.01) * vec2(1.0, float(gl_LaunchSizeEXT.x)/gl_LaunchSizeEXT.y), 0, 1);
+    vec4 viewSpaceLensSample = vec4(sampleDisk(prd.seed, 0.002) * vec2(1.0, float(gl_LaunchSizeEXT.x)/gl_LaunchSizeEXT.y), 0, 1);
     origin = cam.viewInverse * viewSpaceLensSample;
 
     direction = cam.viewInverse * vec4(normalize(target.xyz*focalDistance-viewSpaceLensSample.xyz), 0);
   }
 
-  uint  rayFlags = gl_RayFlagsOpaqueEXT;
-  float tMin     = 0.001;
-  float tMax     = 10000.0;
+  vec3 lightModulation = vec3(1);
+  vec3 rayAccumLight = vec3(0);
 
-  prd.hitValue     = vec3(0);
-  prd.seed         = seed;
-  prd.depth        = 0;
-  prd.rayOrigin    = origin.xyz;
-  prd.rayDirection = direction.xyz;
-  prd.weight       = vec3(0);
-
-  vec3 curWeight = vec3(1);
-  vec3 hitValue  = vec3(0);
-
-  for(; prd.depth < 10; prd.depth++)
+  for(int rayDepth = 0; rayDepth < 4; rayDepth++)
   {
-    traceRayEXT(topLevelAS,        // acceleration structure
-                rayFlags,          // rayFlags
-                0xFF,              // cullMask
-                0,                 // sbtRecordOffset
-                0,                 // sbtRecordStride
-                0,                 // missIndex
-                prd.rayOrigin,     // ray origin
-                tMin,              // ray min range
-                prd.rayDirection,  // ray direction
-                tMax,              // ray max range
-                0                  // payload (location = 0)
-    );
+    traceRay(origin.xyz, direction.xyz);
+    if(prd.worldPos.w < 0) // Miss
+    {
+      rayAccumLight += pushC.clearColor.xyz * lightModulation;
+      break;
+    }
+    // --- Process hit ---
+    // Emissive
+    if(prd.emittance != vec3(0.0))
+    {
+      rayAccumLight += prd.emittance * lightModulation * 1000;
+      break; // Terminate ray early on emissive surfaces
+    }
 
-    hitValue += prd.hitValue * curWeight;
-    curWeight *= prd.weight;
+    // Prepare next bounce
+    vec3 hitNormal = prd.worldNormal;
+    vec3 tangent, bitangent;
+    createCoordinateSystem(hitNormal, tangent, bitangent);
+
+    origin.xyz = prd.worldPos.xyz + hitNormal * max(1e-6, 1e-6 * prd.worldPos.w);
+    direction.xyz = samplingCosHemisphere(prd.seed, tangent, bitangent, hitNormal);
+    lightModulation *= prd.baseColor / M_PI;
   }
 
   // Do accumulation over time
@@ -93,11 +112,11 @@ void main()
   {
     float a         = 1.0f / float(pushC.frame + 1);
     vec3  old_color = imageLoad(image, ivec2(gl_LaunchIDEXT.xy)).xyz;
-    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, hitValue, a), 1.f));
+    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, rayAccumLight, a), 1.f));
   }
   else
   {
     // First frame, replace the value in the buffer
-    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitValue, 1.f));
+    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(rayAccumLight, 1.f));
   }
 }

@@ -56,6 +56,20 @@ vec3 samplingHemisphere(inout uint seed, in vec3 x, in vec3 y, in vec3 z)
   return direction;
 }
 
+// Cosine weighted distribution
+vec3 samplingCosHemisphere(inout uint seed, in vec3 x, in vec3 y, in vec3 z)
+{
+
+  float r1 = rnd(seed);
+  float r2 = rnd(seed);
+  float sq = sqrt(1.0 - r2);
+
+  vec3 direction = vec3(cos(2 * M_PI * r1) * sq, sin(2 * M_PI * r1) * sq, sqrt(r2));
+  direction      = direction.x * x + direction.y * y + direction.z * z;
+
+  return direction;
+}
+
 // Return the tangent and binormal from the incoming normal
 void createCoordinateSystem(in vec3 N, out vec3 Nt, out vec3 Nb)
 {
