@@ -103,17 +103,11 @@ void main()
   const vec2 uv0       = getTexCoord(triangleIndex.x);
   const vec2 uv1       = getTexCoord(triangleIndex.y);
   const vec2 uv2       = getTexCoord(triangleIndex.z);
-  const vec2 texcoord0 = uv0 * barycentrics.x + uv1 * barycentrics.y + uv2 * barycentrics.z;
+  vec2 texcoord0 = uv0 * barycentrics.x + uv1 * barycentrics.y + uv2 * barycentrics.z;
 
   // https://en.wikipedia.org/wiki/Path_tracing
   // Material of the object
   GltfShadeMaterial mat       = materials[nonuniformEXT(matIndex)];
-  vec3              emittance = mat.emissiveFactor;
-  if(mat.emissiveTexture >= 0)
-  {
-    uint txtId = mat.emissiveTexture;
-    emittance *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
-  }
 
   // Pick a random direction from here and keep going.
   vec3 tangent, bitangent;
@@ -130,9 +124,18 @@ void main()
   if(mat.pbrBaseColorTexture > -1)
   {
     uint txtId = mat.pbrBaseColorTexture;
+    texcoord0 = min(vec2(1.0),max(texcoord0, vec2(0.0)));
     albedo *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
   }
   vec3 BRDF = albedo / M_PI;
+
+  vec3              emittance = mat.emissiveFactor;
+  if(mat.emissiveTexture > -1)
+  {
+    //uint txtId = mat.pbrBaseColorTexture;
+    uint txtId = max(0, mat.emissiveTexture-2);
+    emittance *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz*10;
+  }
 
   prd.rayOrigin    = rayOrigin;
   prd.rayDirection = rayDirection;

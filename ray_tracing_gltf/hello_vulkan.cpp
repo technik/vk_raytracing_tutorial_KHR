@@ -332,7 +332,7 @@ void HelloVulkan::loadScene(const std::string& filename)
   {
 	  // Load first camera by default
 	  auto& sceneCam = tmodel.cameras.front();
-	  CameraManip.setFov(sceneCam.perspective.yfov * 180);
+	  CameraManip.setFov(sceneCam.perspective.yfov * 180 / 3.14159265f);
 	  CameraManip.setMatrix(m_gltfScene.m_cameras.front().worldMatrix);
   }
 }
