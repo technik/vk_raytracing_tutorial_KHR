@@ -1,6 +1,11 @@
 // Generate a random unsigned int from two unsigned int values, using 16 pairs
 // of rounds of the Tiny Encryption Algorithm. See Zafar, Olano, and Curtis,
 // "GPU Random Numbers via the Tiny Encryption Algorithm"
+
+const float PI = 3.14159265;
+#define M_PI PI
+const float TwoPi = 6.2831852436065673828125f;
+
 uint tea(uint val0, uint val1)
 {
   uint v0 = val0;
@@ -41,8 +46,6 @@ float rnd(inout uint prev)
 // Randomly sampling around +Z
 vec3 samplingHemisphere(inout uint seed, in vec3 x, in vec3 y, in vec3 z)
 {
-#define M_PI 3.141592
-
   float r1 = rnd(seed);
   float r2 = rnd(seed);
   float sq = sqrt(1.0 - r2);
@@ -61,4 +64,13 @@ void createCoordinateSystem(in vec3 N, out vec3 Nt, out vec3 Nb)
   else
     Nt = vec3(0, -N.z, N.y) / sqrt(N.y * N.y + N.z * N.z);
   Nb = cross(N, Nt);
+}
+
+vec2 sampleDisk(inout uint seed, float rad)
+{
+  float r = sqrt(rnd(seed)) * rad;
+  float t = rnd(seed)*TwoPi-PI;
+  float cost = cos(t);
+  float sint = sqrt(1-cost*cost) * sign(t);
+  return r*vec2(cost, sint);
 }

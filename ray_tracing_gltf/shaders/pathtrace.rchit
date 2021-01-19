@@ -134,7 +134,7 @@ void main()
   {
     //uint txtId = mat.pbrBaseColorTexture;
     uint txtId = max(0, mat.emissiveTexture);
-    emittance *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz*10;
+    emittance *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz*100;
   }
 
   prd.rayOrigin    = rayOrigin;
@@ -143,26 +143,6 @@ void main()
   prd.weight       = BRDF * cos_theta / p;
   return;
 
-  // Recursively trace reflected light sources.
-  if(prd.depth < 10)
-  {
-    prd.depth++;
-    float tMin  = 0.001;
-    float tMax  = 100000000.0;
-    uint  flags = gl_RayFlagsOpaqueEXT;
-    traceRayEXT(topLevelAS,    // acceleration structure
-                flags,         // rayFlags
-                0xFF,          // cullMask
-                0,             // sbtRecordOffset
-                0,             // sbtRecordStride
-                0,             // missIndex
-                rayOrigin,     // ray origin
-                tMin,          // ray min range
-                rayDirection,  // ray direction
-                tMax,          // ray max range
-                0              // payload (location = 0)
-    );
-  }
   vec3 incoming = prd.hitValue;
 
   // Apply the Rendering Equation here.

@@ -237,7 +237,7 @@ bool RaytracingPipeline::tryLoadPipeline()
 		m_shaderGroups.size()));
 		rayPipelineInfo.setPGroups(m_shaderGroups.data());
 
-	rayPipelineInfo.setMaxPipelineRayRecursionDepth(2);  // Ray depth
+	rayPipelineInfo.setMaxPipelineRayRecursionDepth(1);  // Ray depth
 	rayPipelineInfo.setLayout(m_pipelineLayout);
 	auto newPipeline = static_cast<const vk::Pipeline&>(
 		m_device.createRayTracingPipelineKHR({}, {}, rayPipelineInfo));

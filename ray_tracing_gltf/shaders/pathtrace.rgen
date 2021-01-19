@@ -46,6 +46,15 @@ void main()
   vec4 target    = cam.projInverse * vec4(d.x, d.y, 1, 1);
   vec4 direction = cam.viewInverse * vec4(normalize(target.xyz), 0);
 
+  if(true)
+  {
+    const float focalDistance = 3.0;
+    vec4 viewSpaceLensSample = vec4(sampleDisk(seed, 0.01) * vec2(1.0, float(gl_LaunchSizeEXT.x)/gl_LaunchSizeEXT.y), 0, 1);
+    origin = cam.viewInverse * viewSpaceLensSample;
+
+    direction = cam.viewInverse * vec4(normalize(target.xyz*focalDistance-viewSpaceLensSample.xyz), 0);
+  }
+
   uint  rayFlags = gl_RayFlagsOpaqueEXT;
   float tMin     = 0.001;
   float tMax     = 10000.0;
