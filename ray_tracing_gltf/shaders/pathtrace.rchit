@@ -133,7 +133,7 @@ void main()
   if(mat.emissiveTexture > -1)
   {
     //uint txtId = mat.pbrBaseColorTexture;
-    uint txtId = max(0, mat.emissiveTexture-2);
+    uint txtId = max(0, mat.emissiveTexture);
     emittance *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz*10;
   }
 
