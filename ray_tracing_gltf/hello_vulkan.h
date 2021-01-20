@@ -34,7 +34,7 @@
 #include "nvvk/descriptorsets_vk.hpp"
 
 // #VKRay
-#include "nvh/gltfscene.hpp"
+#include "gltfscene.hpp"
 #include "nvvk/raytraceKHR_vk.hpp"
 
 #include "RaytracingPipeline.h"

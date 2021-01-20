@@ -38,7 +38,7 @@ extern std::vector<std::string> defaultSearchPaths;
 #include "hello_vulkan.h"
 #include "nvh/cameramanipulator.hpp"
 #include "nvh/fileoperations.hpp"
-#include "nvh/gltfscene.hpp"
+#include "gltfscene.hpp"
 #include "nvh/nvprint.hpp"
 #include "nvvk/commands_vk.hpp"
 #include "nvvk/descriptorsets_vk.hpp"
