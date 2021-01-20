@@ -103,13 +103,21 @@ vec3 explicitLightSampling(in vec3 origin, in vec3 normal)
   	const vec3 pos0 = getVertex(triangleIndex.x);
   	const vec3 pos1 = getVertex(triangleIndex.y);
   	const vec3 pos2 = getVertex(triangleIndex.z);
-  	vec3 vtxPos = mix(pos0, pos1, rnd(prd.seed));
+  	float u = rnd(prd.seed);
+  	float v = rnd(prd.seed);
+  	vec3 vtxPos = mix(pos2, mix(pos0, pos1, u), v);
 	vec4 lightPos = matrices[lightInstance] * vec4(vtxPos,1);
-	vec3 dir = normalize(lightPos.xyz - origin);
-	if(dot(dir,normal) <= 0)
+	vec3 dir = lightPos.xyz - origin;
+	
+	float distance2 = dot(dir,dir);
+	dir = normalize(dir);
+	float ndl = dot(dir,normal);
+	if(ndl <= 0)
 		return vec3(0);
 	traceRay(origin, dir);
-	return prd.emittance;
+	if(prd.worldPos.w * prd.worldPos.w < (distance2-1e-4))
+		return vec3(0);
+	return prd.emittance * ndl;
 }
 
 void main()
