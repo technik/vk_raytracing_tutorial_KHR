@@ -72,8 +72,10 @@ struct CameraMatrices
 
 void HelloVulkan::renderUI()
 {
-	ImGuiH::CameraWidget();
-	bool mustClean = false;
+	// Camera controls
+	bool mustClean = ImGuiH::CameraWidget();
+
+	// Path tracing controls
 	ImGui::Checkbox("Accumulate", &m_accumulate);
 	float logExp = log2(m_postPushC.exposure);
 	ImGui::SliderFloat("EV steps", &logExp, -4.f, 4.f);
@@ -193,19 +195,15 @@ void HelloVulkan::createDescriptorSetLayout()
   auto& bind = m_descSetLayoutBind;
   // Camera matrices (binding = 0)
   bind.addBinding(vkDS(B_CAMERA, vkDT::eUniformBuffer, 1, vkSS::eVertex | vkSS::eRaygenKHR));
-  bind.addBinding(
-      vkDS(B_VERTICES, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
-  bind.addBinding(
-      vkDS(B_INDICES, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
+  bind.addBinding(vkDS(B_VERTICES, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
+  bind.addBinding(vkDS(B_INDICES, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
   bind.addBinding(vkDS(B_NORMALS, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR));
   bind.addBinding(vkDS(B_TEXCOORDS, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR));
-  bind.addBinding(vkDS(B_MATERIALS, vkDT::eStorageBuffer, 1,
-                       vkSS::eFragment | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
-  bind.addBinding(vkDS(B_MATRICES, vkDT::eStorageBuffer, 1,
-                       vkSS::eVertex | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
+  bind.addBinding(vkDS(B_MATERIALS, vkDT::eStorageBuffer, 1, vkSS::eFragment | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
+  bind.addBinding(vkDS(B_MATRICES, vkDT::eStorageBuffer, 1, vkSS::eVertex | vkSS::eRaygenKHR | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
   auto nbTextures = static_cast<uint32_t>(m_textures.size());
-  bind.addBinding(vkDS(B_TEXTURES, vkDT::eCombinedImageSampler, nbTextures,
-                       vkSS::eFragment | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
+  bind.addBinding(vkDS(B_TEXTURES, vkDT::eCombinedImageSampler, nbTextures, vkSS::eFragment | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
+  bind.addBinding(vkDS(B_LIGHT_INST, vkDT::eStorageBuffer, 1, vkSS::eRaygenKHR));
 
 
   m_descSetLayout = m_descSetLayoutBind.createLayout(m_device);
@@ -227,7 +225,8 @@ void HelloVulkan::updateDescriptorSet()
   vk::DescriptorBufferInfo normalDesc{m_normalBuffer.buffer, 0, VK_WHOLE_SIZE};
   vk::DescriptorBufferInfo uvDesc{m_uvBuffer.buffer, 0, VK_WHOLE_SIZE};
   vk::DescriptorBufferInfo materialDesc{m_materialBuffer.buffer, 0, VK_WHOLE_SIZE};
-  vk::DescriptorBufferInfo matrixDesc{m_matrixBuffer.buffer, 0, VK_WHOLE_SIZE};
+  vk::DescriptorBufferInfo matrixDesc{ m_matrixBuffer.buffer, 0, VK_WHOLE_SIZE };
+  vk::DescriptorBufferInfo lightInstDesc{m_lightsBuffer.buffer, 0, VK_WHOLE_SIZE};
 
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_CAMERA, &dbiUnif));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_VERTICES, &vertexDesc));
@@ -236,6 +235,7 @@ void HelloVulkan::updateDescriptorSet()
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_TEXCOORDS, &uvDesc));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_MATERIALS, &materialDesc));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_MATRICES, &matrixDesc));
+  writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_LIGHT_INST, &lightInstDesc));
 
   // All texture samplers
   std::vector<vk::DescriptorImageInfo> diit;
@@ -289,6 +289,24 @@ bool isBinaryFile(const std::string& path)
   return path.substr(path.size() - 4) == ".glb";
 }
 
+void HelloVulkan::buildLightTables(vk::CommandBuffer cmdBuf)
+{
+	for (size_t i = 0; i < m_gltfScene.m_nodes.size(); ++i)
+	{
+		auto& instance = m_gltfScene.m_nodes[i];
+		auto& primitive = m_gltfScene.m_primMeshes[instance.primMesh];
+		auto& material = m_gltfScene.m_materials[primitive.materialIndex];
+		if (material.emissiveFactor != vec3(0.f, 0.f, 0.f))
+			m_emissiveInstances.push_back(i);
+	}
+
+	m_rtPushConstants.numLightInstances = m_emissiveInstances.size();
+	m_lightsBuffer = m_alloc.createBuffer(
+		cmdBuf,
+		m_emissiveInstances,
+		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+}
+
 //--------------------------------------------------------------------------------------------------
 // Loading the OBJ file and setting up all buffers
 //
@@ -337,6 +355,8 @@ void HelloVulkan::loadScene(const std::string& filename)
                                         vkBU::eVertexBuffer | vkBU::eStorageBuffer);
   m_uvBuffer     = m_alloc.createBuffer(cmdBuf, m_gltfScene.m_texcoords0,
                                     vkBU::eVertexBuffer | vkBU::eStorageBuffer);
+
+  buildLightTables(cmdBuf);
 
   // Copying all materials, only the elements we need
   std::vector<GltfShadeMaterial> shadeMaterials;

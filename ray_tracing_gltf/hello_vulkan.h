@@ -143,6 +143,8 @@ public:
   void updateFrame();
   void resetFrame();
 
+  void buildLightTables(vk::CommandBuffer cmdBuf);
+
   vk::PhysicalDeviceRayTracingPipelinePropertiesKHR   m_rtProperties;
   nvvk::RaytracingBuilderKHR                          m_rtBuilder;
   nvvk::DescriptorSetBindings                         m_rtDescSetLayoutBind;
@@ -170,6 +172,11 @@ public:
 		float focalDistance{ 1.f };
 		int maxBounces{ 4 };
 		int firstBounce{ 0 };
+		int numLightInstances{ 0 };
 		uint renderFlags{ 0 };
 	} m_rtPushConstants;
+
+	// ReSTIR
+	std::vector<uint32_t> m_emissiveInstances;
+	nvvk::Buffer   m_lightsBuffer;
 };

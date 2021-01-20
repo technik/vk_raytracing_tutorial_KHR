@@ -35,6 +35,7 @@ layout(push_constant) uniform Constants
     float focalDistance;
     int maxBounces;
     int firstBounce;
+    int numLightInstances;
     uint renderFlags;
 }
 pushC;

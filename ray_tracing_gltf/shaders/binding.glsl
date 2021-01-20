@@ -8,3 +8,4 @@
 #define B_MATERIALS 5
 #define B_MATRICES 6
 #define B_TEXTURES 7
+#define B_LIGHT_INST 8
