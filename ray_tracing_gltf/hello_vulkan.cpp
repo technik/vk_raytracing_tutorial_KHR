@@ -59,6 +59,7 @@ extern std::vector<std::string> defaultSearchPaths;
 #define FLAG_ALBEDO_85	4
 #define FLAG_NO_SPEC	8
 #define FLAG_NO_DIFF	16
+#define FLAG_NEXT_EE	32
 
 // Holding the camera matrices
 struct CameraMatrices
@@ -97,6 +98,8 @@ void HelloVulkan::renderUI()
 		mustClean |= ImGui::Checkbox("Specular", &showSpecular);
 		bool showDiffuse = !renderFlag(FLAG_NO_DIFF);
 		mustClean |= ImGui::Checkbox("Diffuse", &showDiffuse);
+		bool nextEventEstim = renderFlag(FLAG_NEXT_EE);
+		mustClean |= ImGui::Checkbox("Next Event", &nextEventEstim);
 
 
 		m_rtPushConstants.renderFlags =
@@ -104,7 +107,8 @@ void HelloVulkan::renderUI()
 			(dof ? FLAG_DOF : 0) |
 			(albedo085 ? FLAG_ALBEDO_85 : 0) |
 			(showSpecular ? 0 : FLAG_NO_SPEC) |
-			(showDiffuse ? 0 : FLAG_NO_DIFF);
+			(showDiffuse ? 0 : FLAG_NO_DIFF) |
+			(nextEventEstim ? FLAG_NEXT_EE : 0);
 		if (dof)
 		{
 			float expFocalDistance = log10f(m_rtPushConstants.focalDistance);
@@ -195,8 +199,8 @@ void HelloVulkan::createDescriptorSetLayout()
   auto& bind = m_descSetLayoutBind;
   // Camera matrices (binding = 0)
   bind.addBinding(vkDS(B_CAMERA, vkDT::eUniformBuffer, 1, vkSS::eVertex | vkSS::eRaygenKHR));
-  bind.addBinding(vkDS(B_VERTICES, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
-  bind.addBinding(vkDS(B_INDICES, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
+  bind.addBinding(vkDS(B_VERTICES, vkDT::eStorageBuffer, 1, vkSS::eRaygenKHR | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
+  bind.addBinding(vkDS(B_INDICES, vkDT::eStorageBuffer, 1, vkSS::eRaygenKHR | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
   bind.addBinding(vkDS(B_NORMALS, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR));
   bind.addBinding(vkDS(B_TEXCOORDS, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR));
   bind.addBinding(vkDS(B_MATERIALS, vkDT::eStorageBuffer, 1, vkSS::eFragment | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
@@ -379,7 +383,7 @@ void HelloVulkan::loadScene(const std::string& filename)
   std::vector<RtPrimitiveLookup> primLookup;
   for(auto& primMesh : m_gltfScene.m_primMeshes)
   {
-    primLookup.push_back({primMesh.firstIndex, primMesh.vertexOffset, primMesh.materialIndex});
+    primLookup.push_back({primMesh.firstIndex, primMesh.vertexOffset, primMesh.materialIndex, primMesh.indexCount});
   }
   m_rtPrimLookup =
       m_alloc.createBuffer(cmdBuf, primLookup, vk::BufferUsageFlagBits::eStorageBuffer);
@@ -827,7 +831,7 @@ void HelloVulkan::createRtDescriptorSet()
   m_rtDescSetLayoutBind.addBinding(
       vkDSLB(1, vkDT::eStorageImage, 1, vkSS::eRaygenKHR));  // Output image
   m_rtDescSetLayoutBind.addBinding(vkDSLB(
-      2, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));  // Primitive info
+      2, vkDT::eStorageBuffer, 1, vkSS::eRaygenKHR | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));  // Primitive info
 
   m_rtDescPool      = m_rtDescSetLayoutBind.createPool(m_device);
   m_rtDescSetLayout = m_rtDescSetLayoutBind.createLayout(m_device);

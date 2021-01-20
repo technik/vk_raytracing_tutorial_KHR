@@ -2,17 +2,22 @@
 #extension GL_EXT_ray_tracing : require
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_ARB_shader_clock : enable
+#extension GL_EXT_nonuniform_qualifier : enable
 
 #include "binding.glsl"
+#include "gltf.glsl"
 #include "raycommon.glsl"
 #include "sampling.glsl"
 
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
 layout(set = 0, binding = 1, rgba32f) uniform image2D image;
+layout(set = 0, binding = 2) readonly buffer _InstanceInfo {PrimMeshInfo primInfo[];};
 
 // For light sampling
 layout(set = 1, binding = B_MATRICES) readonly buffer _Matrix { mat4 matrices[]; };
-layout(set = 1, binding = B_LIGHT_INST) readonly buffer _LightInstance { uint lightIstances; };
+layout(set = 1, binding = B_LIGHT_INST) readonly buffer _LightInstance { uint lightIstances[]; };
+layout(set = 1, binding = B_VERTICES) readonly buffer _VertexBuf {float vertices[];};
+layout(set = 1, binding = B_INDICES) readonly buffer _Indices {uint indices[];};
 
 layout(location = 0) rayPayloadEXT hitPayload prd;
 
@@ -43,7 +48,7 @@ bool renderFlag(uint flag)
 	return (pushC.renderFlags & flag) > 0;
 }
 
-bool traceRay(vec3 ro, vec3 rd)
+bool traceRay(in vec3 ro, in vec3 rd)
 {
     uint  rayFlags = 0;//gl_RayFlagsOpaqueEXT;
     float tMax     = 10000.0;
@@ -64,67 +69,119 @@ bool traceRay(vec3 ro, vec3 rd)
     return prd.worldPos.w >= 0;
 }
 
+// Return the vertex position
+vec3 getVertex(uint index)
+{
+  vec3 vp;
+  vp.x = vertices[3 * index + 0];
+  vp.y = vertices[3 * index + 1];
+  vp.z = vertices[3 * index + 2];
+  return vp;
+}
+
+vec3 explicitLightSampling(in vec3 origin, in vec3 normal)
+{
+	// Choose an emissive mesh
+	uint emitterIndex = lcg(prd.seed) % pushC.numLightInstances;
+	uint lightInstance = lightIstances[emitterIndex];
+
+	// Choose a triangle
+	// Retrieve the Primitive mesh buffer information
+	PrimMeshInfo pinfo = primInfo[lightInstance];
+	uint triNdx = lcg(prd.seed) % (pinfo.numIndices/3);
+
+	// Getting the 'first index' for this mesh (offset of the mesh + offset of the triangle)
+	uint indexOffset  = pinfo.indexOffset + (3 * triNdx);
+	uint vertexOffset = pinfo.vertexOffset;           // Vertex offset as defined in glTF
+	// Getting the 3 indices of the triangle (local)
+	ivec3 triangleIndex = ivec3(indices[nonuniformEXT(indexOffset + 0)],  //
+	                          indices[nonuniformEXT(indexOffset + 1)],  //
+	                          indices[nonuniformEXT(indexOffset + 2)]);
+	triangleIndex += ivec3(vertexOffset);  // (global)
+
+  	// Sample the triangle
+  	const vec3 pos0 = getVertex(triangleIndex.x);
+  	const vec3 pos1 = getVertex(triangleIndex.y);
+  	const vec3 pos2 = getVertex(triangleIndex.z);
+  	vec3 vtxPos = mix(pos0, pos1, rnd(prd.seed));
+	vec4 lightPos = matrices[lightInstance] * vec4(vtxPos,1);
+	vec3 dir = normalize(lightPos.xyz - origin);
+	if(dot(dir,normal) <= 0)
+		return vec3(0);
+	traceRay(origin, dir);
+	return prd.emittance;
+}
+
 void main()
 {
-  // Initialize the random number
-  prd.seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, int(clockARB()));
+	// Initialize the random number
+	prd.seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, int(clockARB()));
 
-  const vec2 pixelOffset = renderFlag(FLAG_JITTER_AA) ? vec2(rnd(prd.seed), rnd(prd.seed)) : vec2(0.5);
-  const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + pixelOffset;
-  const vec2 inUV        = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
-  vec2       d           = inUV * 2.0 - 1.0;
+	const vec2 pixelOffset = renderFlag(FLAG_JITTER_AA) ? vec2(rnd(prd.seed), rnd(prd.seed)) : vec2(0.5);
+	const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + pixelOffset;
+	const vec2 inUV        = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
+	vec2       d           = inUV * 2.0 - 1.0;
 
-  vec4 origin    = cam.viewInverse * vec4(0, 0, 0, 1);
-  vec4 target    = cam.projInverse * vec4(d.x, d.y, 1, 1);
-  vec4 direction = cam.viewInverse * vec4(normalize(target.xyz), 0);
+	vec4 origin    = cam.viewInverse * vec4(0, 0, 0, 1);
+	vec4 target    = cam.projInverse * vec4(d.x, d.y, 1, 1);
+	vec4 direction = cam.viewInverse * vec4(normalize(target.xyz), 0);
 
-  if(renderFlag(FLAG_DOF))
-  {
-    vec4 viewSpaceLensSample = vec4(sampleDisk(prd.seed, pushC.lensRadius) * vec2(1.0, float(gl_LaunchSizeEXT.x)/gl_LaunchSizeEXT.y), 0, 1);
-    origin = cam.viewInverse * viewSpaceLensSample;
+	if(renderFlag(FLAG_DOF))
+	{
+		vec4 viewSpaceLensSample = vec4(sampleDisk(prd.seed, pushC.lensRadius) * vec2(1.0, float(gl_LaunchSizeEXT.x)/gl_LaunchSizeEXT.y), 0, 1);
+		origin = cam.viewInverse * viewSpaceLensSample;
 
-    direction = cam.viewInverse * vec4(normalize(target.xyz*pushC.focalDistance-viewSpaceLensSample.xyz), 0);
-  }
+		direction = cam.viewInverse * vec4(normalize(target.xyz*pushC.focalDistance-viewSpaceLensSample.xyz), 0);
+	}
 
-  vec3 lightModulation = vec3(1);
-  vec3 rayAccumLight = vec3(0);
+	vec3 lightModulation = vec3(1);
+	vec3 rayAccumLight = vec3(0);
 
-  for(int rayDepth = 0; rayDepth < pushC.maxBounces; rayDepth++)
-  {
-    traceRay(origin.xyz, direction.xyz);
-    if(prd.worldPos.w < 0) // Miss
-    {
-      rayAccumLight += pushC.clearColor.xyz * lightModulation;
-      break;
-    }
-    // --- Process hit ---
-    // Emissive
-    if(prd.emittance != vec3(0.0))
-    {
-      rayAccumLight += prd.emittance * lightModulation * 1000;
-      break; // Terminate ray early on emissive surfaces
-    }
+	const bool nextEventEstimation = renderFlag(FLAG_NEXT_EE);
 
-    // Prepare next bounce
-    vec3 hitNormal = prd.worldNormal;
-    vec3 tangent, bitangent;
-    createCoordinateSystem(hitNormal, tangent, bitangent);
+	for(int rayDepth = 0; rayDepth < pushC.maxBounces; rayDepth++)
+	{
+		traceRay(origin.xyz, direction.xyz);
+		if(prd.worldPos.w < 0) // Miss
+		{
+			rayAccumLight += pushC.clearColor.xyz * lightModulation;
+			break;
+		}
+		// --- Process hit ---
+		// Emissive
+		if(prd.emittance != vec3(0.0))
+		{
+			if(!nextEventEstimation || rayDepth == 0)
+				rayAccumLight += prd.emittance * lightModulation * 1000;
+			break; // Terminate ray early on emissive surfaces
+		}
 
-    origin.xyz = prd.worldPos.xyz + hitNormal * max(1e-6, 1e-6 * prd.worldPos.w);
-    direction.xyz = samplingCosHemisphere(prd.seed, tangent, bitangent, hitNormal);
-    lightModulation *= prd.baseColor / M_PI;
-  }
+		// Prepare next bounce
+		vec3 hitNormal = prd.worldNormal;
+		vec3 tangent, bitangent;
+		createCoordinateSystem(hitNormal, tangent, bitangent);
 
-  // Do accumulation over time
-  if(pushC.frame > 0)
-  {
-    float a         = 1.0f / float(pushC.frame + 1);
-    vec3  old_color = imageLoad(image, ivec2(gl_LaunchIDEXT.xy)).xyz;
-    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, rayAccumLight, a), 1.f));
-  }
-  else
-  {
-    // First frame, replace the value in the buffer
-    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(rayAccumLight, 1.f));
-  }
+		origin.xyz = prd.worldPos.xyz + hitNormal * max(1e-6, 1e-6 * prd.worldPos.w);
+		direction.xyz = samplingCosHemisphere(prd.seed, tangent, bitangent, hitNormal);
+		lightModulation *= prd.baseColor / M_PI;
+
+		// Explicit light sampling
+		if(nextEventEstimation)
+		{
+			rayAccumLight += lightModulation * explicitLightSampling(origin.xyz, hitNormal);
+		}
+	}
+
+	// Do accumulation over time
+	if(pushC.frame > 0)
+	{
+		float a         = 1.0f / float(pushC.frame + 1);
+		vec3  old_color = imageLoad(image, ivec2(gl_LaunchIDEXT.xy)).xyz;
+		imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, rayAccumLight, a), 1.f));
+	}
+	else
+	{
+		// First frame, replace the value in the buffer
+		imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(rayAccumLight, 1.f));
+	}
 }

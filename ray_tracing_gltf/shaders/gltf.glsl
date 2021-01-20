@@ -14,6 +14,7 @@ struct PrimMeshInfo
   uint indexOffset;
   uint vertexOffset;
   int  materialIndex;
+  uint numIndices;
 };
 
 

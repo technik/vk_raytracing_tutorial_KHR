@@ -69,9 +69,10 @@ public:
   // The gl_InstanceCustomIndexNV
   struct RtPrimitiveLookup
   {
-	uint32_t indexOffset;
-	uint32_t vertexOffset;
-	int      materialIndex;
+	uint32_t	indexOffset;
+	uint32_t	vertexOffset;
+	int			materialIndex;
+	uint		numIndices;
   };
 
 

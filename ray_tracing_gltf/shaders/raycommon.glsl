@@ -14,3 +14,4 @@ struct hitPayload
 #define FLAG_ALBEDO_85	4
 #define FLAG_NO_SPEC	8
 #define FLAG_NO_DIFF	16
+#define FLAG_NEXT_EE	32
