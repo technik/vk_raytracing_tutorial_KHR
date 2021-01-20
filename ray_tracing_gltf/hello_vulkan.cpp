@@ -54,6 +54,11 @@ extern std::vector<std::string> defaultSearchPaths;
 
 #include <chrono>
 
+#define FLAG_JITTER_AA	1
+#define FLAG_DOF		2
+#define FLAG_ALBEDO_85	4
+#define FLAG_NO_SPEC	8
+#define FLAG_NO_DIFF	16
 
 // Holding the camera matrices
 struct CameraMatrices
@@ -64,6 +69,53 @@ struct CameraMatrices
   // #VKRay
   nvmath::mat4f projInverse;
 };
+
+void HelloVulkan::renderUI()
+{
+	ImGuiH::CameraWidget();
+	bool mustClean = false;
+	ImGui::Checkbox("Accumulate", &m_accumulate);
+	float logExp = log2(m_postPushC.exposure);
+	ImGui::SliderFloat("EV steps", &logExp, -4.f, 4.f);
+	m_postPushC.exposure = powf(2.f, logExp);
+	if (ImGui::CollapsingHeader("Reference path tracer"))
+	{
+		mustClean |= ImGui::InputInt("Max bounces", &m_rtPushConstants.maxBounces, 1);
+		mustClean |= ImGui::InputInt("First bounce", &m_rtPushConstants.firstBounce, 1);
+		m_rtPushConstants.maxBounces = std::min(20, std::max(0, m_rtPushConstants.maxBounces));
+		m_rtPushConstants.firstBounce = std::min(20, std::max(0, m_rtPushConstants.firstBounce));
+		// Render flags
+		bool jitterAA = renderFlag(FLAG_JITTER_AA);
+		mustClean |= ImGui::Checkbox("Jitter AA", &jitterAA);
+		bool dof = renderFlag(FLAG_DOF);
+		mustClean |= ImGui::Checkbox("Depth of field", &dof);
+		bool albedo085 = renderFlag(FLAG_ALBEDO_85);
+		mustClean |= ImGui::Checkbox("Albedo 0.85", &albedo085);
+		bool showSpecular = !renderFlag(FLAG_NO_SPEC);
+		mustClean |= ImGui::Checkbox("Specular", &showSpecular);
+		bool showDiffuse = !renderFlag(FLAG_NO_DIFF);
+		mustClean |= ImGui::Checkbox("Diffuse", &showDiffuse);
+
+
+		m_rtPushConstants.renderFlags =
+			(jitterAA ? FLAG_JITTER_AA : 0) |
+			(dof ? FLAG_DOF : 0) |
+			(albedo085 ? FLAG_ALBEDO_85 : 0) |
+			(showSpecular ? 0 : FLAG_NO_SPEC) |
+			(showDiffuse ? 0 : FLAG_NO_DIFF);
+		if (dof)
+		{
+			float expFocalDistance = log10f(m_rtPushConstants.focalDistance);
+			mustClean |= ImGui::SliderFloat("Focal distance exp", &expFocalDistance, -3.f, 3.f);
+			mustClean |= ImGui::SliderFloat("Lens radius", &m_rtPushConstants.lensRadius, 0.f, 0.5f);
+			m_rtPushConstants.focalDistance = powf(10.f, expFocalDistance);
+		}
+	}
+	if (mustClean || !m_accumulate)
+	{
+		resetFrame();
+	}
+}
 
 //--------------------------------------------------------------------------------------------------
 // Keep the handle on the device
@@ -642,9 +694,9 @@ void HelloVulkan::drawPost(vk::CommandBuffer cmdBuf)
   cmdBuf.setViewport(0, {vk::Viewport(0, 0, (float)m_size.width, (float)m_size.height, 0, 1)});
   cmdBuf.setScissor(0, {{{0, 0}, {m_size.width, m_size.height}}});
 
-  auto aspectRatio = static_cast<float>(m_size.width) / static_cast<float>(m_size.height);
-  cmdBuf.pushConstants<float>(m_postPipelineLayout, vk::ShaderStageFlagBits::eFragment, 0,
-                              aspectRatio);
+  m_postPushC.aspectRatio = static_cast<float>(m_size.width) / static_cast<float>(m_size.height);
+  cmdBuf.pushConstants<PostPushConstant>(m_postPipelineLayout, vk::ShaderStageFlagBits::eFragment, 0,
+                              m_postPushC);
   cmdBuf.bindPipeline(vk::PipelineBindPoint::eGraphics, m_postPipeline);
   cmdBuf.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_postPipelineLayout, 0,
                             m_postDescSet, {});
@@ -823,10 +875,9 @@ void HelloVulkan::raytrace(const vk::CommandBuffer& cmdBuf, const nvmath::vec4f&
 
   m_debug.beginLabel(cmdBuf, "Ray trace");
   // Initializing push constant values
+  if (!m_accumulate)
+	  resetFrame();
   m_rtPushConstants.clearColor     = clearColor;
-  m_rtPushConstants.lightPosition  = m_pushConstant.lightPosition;
-  m_rtPushConstants.lightIntensity = m_pushConstant.lightIntensity;
-  m_rtPushConstants.lightType      = m_pushConstant.lightType;
 
   m_rtPipeline->bind(cmdBuf);
   m_rtPipeline->bindDescriptorSets(cmdBuf, { m_rtDescSet, m_descSet });

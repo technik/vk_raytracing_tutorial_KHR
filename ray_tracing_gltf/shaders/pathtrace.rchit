@@ -27,16 +27,22 @@ layout(set = 1, binding = B_MATERIALS) readonly buffer _MaterialBuffer {GltfShad
 layout(set = 1, binding = B_TEXTURES) uniform sampler2D texturesMap[]; // all textures
 
 
-// clang-format on
-
 layout(push_constant) uniform Constants
 {
-  vec4  clearColor;
-  vec3  lightPosition;
-  float lightIntensity;
-  int   lightType;
+    vec4  clearColor;
+    int   frame;
+    float lensRadius;
+    float focalDistance;
+    int maxBounces;
+    int firstBounce;
+    uint renderFlags;
 }
 pushC;
+
+bool renderFlag(uint flag)
+{
+  return (pushC.renderFlags & flag) != 0;
+}
 
 // Return the vertex position
 vec3 getVertex(uint index)
@@ -145,5 +151,9 @@ void main()
       prd.emittance = vec3(0);
       prd.metallic = 0.0;
       prd.roughness = 1.0;
+  }
+  if(renderFlag(FLAG_ALBEDO_85))
+  {
+    prd.baseColor = vec3(0.85);
   }
 }

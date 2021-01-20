@@ -8,3 +8,9 @@ struct hitPayload
   	float metallic;
   	uint seed;
 };
+
+#define FLAG_JITTER_AA	1
+#define FLAG_DOF		2
+#define FLAG_ALBEDO_85	4
+#define FLAG_NO_SPEC	8
+#define FLAG_NO_DIFF	16

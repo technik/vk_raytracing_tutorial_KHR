@@ -3,7 +3,6 @@
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_ARB_shader_clock : enable
 
-
 #include "binding.glsl"
 #include "raycommon.glsl"
 #include "sampling.glsl"
@@ -24,15 +23,20 @@ cam;
 
 layout(push_constant) uniform Constants
 {
-  vec4  clearColor;
-  vec3  lightPosition;
-  float lightIntensity;
-  int   lightType;
-  int   frame;
+    vec4  clearColor;
+    int   frame;
+    float lensRadius;
+    float focalDistance;
+    int maxBounces;
+    int firstBounce;
+    uint renderFlags;
 }
 pushC;
 
-
+bool renderFlag(uint flag)
+{
+	return (pushC.renderFlags & flag) > 0;
+}
 
 bool traceRay(vec3 ro, vec3 rd)
 {
@@ -60,7 +64,7 @@ void main()
   // Initialize the random number
   prd.seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, int(clockARB()));
 
-  vec2 pixelOffset = vec2(rnd(prd.seed), rnd(prd.seed));
+  const vec2 pixelOffset = renderFlag(FLAG_JITTER_AA) ? vec2(rnd(prd.seed), rnd(prd.seed)) : vec2(0.5);
   const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + pixelOffset;
   const vec2 inUV        = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
   vec2       d           = inUV * 2.0 - 1.0;
@@ -69,19 +73,18 @@ void main()
   vec4 target    = cam.projInverse * vec4(d.x, d.y, 1, 1);
   vec4 direction = cam.viewInverse * vec4(normalize(target.xyz), 0);
 
-  if(true)
+  if(renderFlag(FLAG_DOF))
   {
-    const float focalDistance = 3.0;
-    vec4 viewSpaceLensSample = vec4(sampleDisk(prd.seed, 0.002) * vec2(1.0, float(gl_LaunchSizeEXT.x)/gl_LaunchSizeEXT.y), 0, 1);
+    vec4 viewSpaceLensSample = vec4(sampleDisk(prd.seed, pushC.lensRadius) * vec2(1.0, float(gl_LaunchSizeEXT.x)/gl_LaunchSizeEXT.y), 0, 1);
     origin = cam.viewInverse * viewSpaceLensSample;
 
-    direction = cam.viewInverse * vec4(normalize(target.xyz*focalDistance-viewSpaceLensSample.xyz), 0);
+    direction = cam.viewInverse * vec4(normalize(target.xyz*pushC.focalDistance-viewSpaceLensSample.xyz), 0);
   }
 
   vec3 lightModulation = vec3(1);
   vec3 rayAccumLight = vec3(0);
 
-  for(int rayDepth = 0; rayDepth < 4; rayDepth++)
+  for(int rayDepth = 0; rayDepth < pushC.maxBounces; rayDepth++)
   {
     traceRay(origin.xyz, direction.xyz);
     if(prd.worldPos.w < 0) // Miss

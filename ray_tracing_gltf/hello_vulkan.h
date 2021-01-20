@@ -49,10 +49,11 @@
 class HelloVulkan : public nvvk::AppBase
 {
 public:
+	void renderUI();
   void setup(const vk::Instance&       instance,
-             const vk::Device&         device,
-             const vk::PhysicalDevice& physicalDevice,
-             uint32_t                  queueFamily) override;
+			 const vk::Device&         device,
+			 const vk::PhysicalDevice& physicalDevice,
+			 uint32_t                  queueFamily) override;
   void createDescriptorSetLayout();
   void createGraphicsPipeline();
   void loadScene(const std::string& filename);
@@ -68,9 +69,9 @@ public:
   // The gl_InstanceCustomIndexNV
   struct RtPrimitiveLookup
   {
-    uint32_t indexOffset;
-    uint32_t vertexOffset;
-    int      materialIndex;
+	uint32_t indexOffset;
+	uint32_t vertexOffset;
+	int      materialIndex;
   };
 
 
@@ -86,11 +87,11 @@ public:
   // Information pushed at each draw call
   struct ObjPushConstant
   {
-    nvmath::vec3f lightPosition{0.f, 4.5f, 0.f};
-    int           instanceId{0};  // To retrieve the transformation matrix
-    float         lightIntensity{10.f};
-    int           lightType{0};  // 0: point, 1: infinite
-    int           materialId{0};
+	nvmath::vec3f lightPosition{0.f, 4.5f, 0.f};
+	int           instanceId{0};  // To retrieve the transformation matrix
+	float         lightIntensity{10.f};
+	int           lightType{0};  // 0: point, 1: infinite
+	int           materialId{0};
   };
   ObjPushConstant m_pushConstant;
 
@@ -150,12 +151,25 @@ public:
   vk::DescriptorSet                                   m_rtDescSet;
   std::unique_ptr<RaytracingPipeline>					m_rtPipeline;
 
-  struct RtPushConstant
-  {
-    nvmath::vec4f clearColor;
-    nvmath::vec3f lightPosition;
-    float         lightIntensity;
-    int           lightType;
-    int           frame{0};
-  } m_rtPushConstants;
+	// Render options
+	bool m_accumulate{ true };
+
+	bool renderFlag(uint32_t flag) const { return (m_rtPushConstants.renderFlags & flag) > 0; }
+
+	struct PostPushConstant
+	{
+		float aspectRatio;
+		float exposure{ 1.f };
+	} m_postPushC;
+
+	struct RtPushConstant
+	{
+		vec4  clearColor;
+		int   frame{ 0 };
+		float lensRadius{ 0.01f };
+		float focalDistance{ 1.f };
+		int maxBounces{ 4 };
+		int firstBounce{ 0 };
+		uint renderFlags{ 0 };
+	} m_rtPushConstants;
 };
