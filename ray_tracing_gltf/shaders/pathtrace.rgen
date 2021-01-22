@@ -120,16 +120,15 @@ vec3 explicitLightSampling(in vec3 origin, in vec3 normal)
 	triangleIndex += ivec3(vertexOffset);  // (global)
 
   	// Sample the triangle
-  	const vec3 pos0 = getVertex(triangleIndex.x);
-  	const vec3 pos1 = getVertex(triangleIndex.y);
-  	const vec3 pos2 = getVertex(triangleIndex.z);
+  	mat4 worldFromInstance = matrices[lightInfo.matrixIndex];
+  	const vec3 pos0 = (worldFromInstance * vec4(getVertex(triangleIndex.x), 1.0)).xyz;
+  	const vec3 pos1 = (worldFromInstance * vec4(getVertex(triangleIndex.y), 1.0)).xyz;
+  	const vec3 pos2 = (worldFromInstance * vec4(getVertex(triangleIndex.z), 1.0)).xyz;
   	float u = rnd(prd.seed);
   	float v = rnd(prd.seed);
-  	vec3 vtxPos = mix(pos2, mix(pos0, pos1, u), v);
-  	mat4 worldFromInstance = matrices[lightInfo.matrixIndex];
-	vec4 lightPos = worldFromInstance * vec4(vtxPos,1);
+  	vec3 vtxPos = mix(pos2, mix(pos1, pos0, u), v);
 
-	vec3 target = lightPos.xyz;
+	vec3 target = vtxPos.xyz;
 	vec3 dir = target - origin;
 	if(dot(dir,normal) <= 0)
 	{
@@ -137,16 +136,16 @@ vec3 explicitLightSampling(in vec3 origin, in vec3 normal)
 	}
 	
 	float dist = sqrt(dot(dir,dir));
-	float invPDF = nLights;
 	
 	dir = normalize(dir);
 	traceRay(origin, dir, dist+1e-2);
 	if(prd.worldPos.w >= dist-1e-2)
 	{
-		vec3 lightNormal = (vec4(cross(pos2-pos0, pos1-pos0), 0) * inverse(worldFromInstance)).xyz;
+		vec3 lightNormal = cross(pos2-pos0, pos1-pos0);
 		float triangleArea = sqrt(dot(lightNormal,lightNormal))/2;
+		float invPDF = nLights * lightInfo.numTriangles;
 		float ndl = dot(dir, normal);
-		return prd.emittance * vec3(invPDF * ndl);//dist*dist, prd.worldPos.w*prd.worldPos.w, 0);
+		return triangleArea * prd.emittance * vec3(invPDF * ndl / (dist*dist));//dist*dist, prd.worldPos.w*prd.worldPos.w, 0);
 	}
 	
 	return vec3(0);
