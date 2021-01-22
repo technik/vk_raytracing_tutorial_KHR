@@ -125,7 +125,7 @@ void main()
       if(mat.emissiveTexture > -1)
       {
           uint txtId = mat.emissiveTexture;
-          prd.emittance *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
+          prd.emittance *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz * 100;
       }
       // baseColor
       prd.baseColor = mat.pbrBaseColorFactor.xyz;

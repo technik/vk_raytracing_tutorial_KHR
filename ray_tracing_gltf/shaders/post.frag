@@ -23,4 +23,5 @@ void main()
   color = color / (color + 1);
 
   fragColor   = vec4(pow(color, vec3(gamma)), 1.0);
+  //fragColor   = vec4(s, 1.0);
 }

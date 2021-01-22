@@ -301,7 +301,14 @@ void HelloVulkan::buildLightTables(vk::CommandBuffer cmdBuf)
 		auto& primitive = m_gltfScene.m_primMeshes[instance.primMesh];
 		auto& material = m_gltfScene.m_materials[primitive.materialIndex];
 		if (material.emissiveFactor != vec3(0.f, 0.f, 0.f))
-			m_emissiveInstances.push_back(i);
+		{
+			LightInstanceInfo light;
+			light.indexOffset = primitive.firstIndex;
+			light.numTriangles = primitive.indexCount / 3;
+			light.vtxOffset = primitive.vertexOffset;
+			light.matrixIndex = i;
+			m_emissiveInstances.push_back(light);
+		}
 	}
 
 	m_rtPushConstants.numLightInstances = m_emissiveInstances.size();

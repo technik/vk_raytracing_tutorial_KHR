@@ -177,7 +177,15 @@ public:
 		uint renderFlags{ 0 };
 	} m_rtPushConstants;
 
+	struct LightInstanceInfo
+	{
+		uint vtxOffset;
+		uint indexOffset;
+		uint numTriangles;
+		uint matrixIndex;
+	};
+
 	// ReSTIR
-	std::vector<uint32_t> m_emissiveInstances;
+	std::vector<LightInstanceInfo> m_emissiveInstances;
 	nvvk::Buffer   m_lightsBuffer;
 };

@@ -17,6 +17,14 @@ struct PrimMeshInfo
   uint numIndices;
 };
 
+struct LightInstanceInfo
+{
+  uint vtxOffset;
+  uint indexOffset;
+  uint numTriangles;
+  uint matrixIndex;
+};
+
 
 vec3 computeDiffuse(GltfShadeMaterial mat, vec3 lightDir, vec3 normal)
 {

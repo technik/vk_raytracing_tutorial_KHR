@@ -15,7 +15,7 @@ layout(set = 0, binding = 2) readonly buffer _InstanceInfo {PrimMeshInfo primInf
 
 // For light sampling
 layout(set = 1, binding = B_MATRICES) readonly buffer _Matrix { mat4 matrices[]; };
-layout(set = 1, binding = B_LIGHT_INST) readonly buffer _LightInstance { uint lightIstances[]; };
+layout(set = 1, binding = B_LIGHT_INST) readonly buffer _LightInstance { LightInstanceInfo lightIstances[]; };
 layout(set = 1, binding = B_VERTICES) readonly buffer _VertexBuf {float vertices[];};
 layout(set = 1, binding = B_INDICES) readonly buffer _Indices {uint indices[];};
 
@@ -50,7 +50,7 @@ bool renderFlag(uint flag)
 
 bool traceRay(in vec3 ro, in vec3 rd)
 {
-    uint  rayFlags = 0;//gl_RayFlagsOpaqueEXT;
+    uint  rayFlags = gl_RayFlagsOpaqueEXT;
     float tMax     = 10000.0;
 
   traceRayEXT(topLevelAS, // acceleration structure
@@ -63,6 +63,26 @@ bool traceRay(in vec3 ro, in vec3 rd)
         0.0,           // ray min range
         rd,           // ray direction
         tMax,           // ray max range
+        0               // payload (location = 0)
+      );
+
+    return prd.worldPos.w >= 0;
+}
+
+bool traceRay(in vec3 ro, in vec3 rd, float maxT)
+{
+    uint  rayFlags = gl_RayFlagsOpaqueEXT;
+
+  traceRayEXT(topLevelAS, // acceleration structure
+        rayFlags,       // rayFlags
+        0xFF,           // cullMask
+        0,              // sbtRecordOffset
+        0,              // sbtRecordStride
+        0,              // missIndex
+        ro,             // ray origin
+        0.0,           // ray min range
+        rd,           // ray direction
+        maxT,           // ray max range
         0               // payload (location = 0)
       );
 
@@ -82,17 +102,17 @@ vec3 getVertex(uint index)
 vec3 explicitLightSampling(in vec3 origin, in vec3 normal)
 {
 	// Choose an emissive mesh
-	uint emitterIndex = lcg(prd.seed) % pushC.numLightInstances;
-	uint lightInstance = lightIstances[emitterIndex];
+	uint nLights = pushC.numLightInstances;
+	uint emitterIndex = lcg(prd.seed) % nLights;
+	LightInstanceInfo lightInfo = lightIstances[emitterIndex];
 
 	// Choose a triangle
 	// Retrieve the Primitive mesh buffer information
-	PrimMeshInfo pinfo = primInfo[lightInstance];
-	uint triNdx = lcg(prd.seed) % (pinfo.numIndices/3);
+	uint triNdx = lcg(prd.seed) % lightInfo.numTriangles;
 
 	// Getting the 'first index' for this mesh (offset of the mesh + offset of the triangle)
-	uint indexOffset  = pinfo.indexOffset + (3 * triNdx);
-	uint vertexOffset = pinfo.vertexOffset;           // Vertex offset as defined in glTF
+	uint indexOffset  = lightInfo.indexOffset + (3 * triNdx);
+	uint vertexOffset = lightInfo.vtxOffset;           // Vertex offset as defined in glTF
 	// Getting the 3 indices of the triangle (local)
 	ivec3 triangleIndex = ivec3(indices[nonuniformEXT(indexOffset + 0)],  //
 	                          indices[nonuniformEXT(indexOffset + 1)],  //
@@ -106,18 +126,30 @@ vec3 explicitLightSampling(in vec3 origin, in vec3 normal)
   	float u = rnd(prd.seed);
   	float v = rnd(prd.seed);
   	vec3 vtxPos = mix(pos2, mix(pos0, pos1, u), v);
-	vec4 lightPos = matrices[lightInstance] * vec4(vtxPos,1);
-	vec3 dir = lightPos.xyz - origin;
+  	mat4 worldFromInstance = matrices[lightInfo.matrixIndex];
+	vec4 lightPos = worldFromInstance * vec4(vtxPos,1);
+
+	vec3 target = lightPos.xyz;
+	vec3 dir = target - origin;
+	if(dot(dir,normal) <= 0)
+	{
+		return vec3(0);
+	}
 	
-	float distance2 = dot(dir,dir);
+	float dist = sqrt(dot(dir,dir));
+	float invPDF = nLights;
+	
 	dir = normalize(dir);
-	float ndl = dot(dir,normal);
-	if(ndl <= 0)
-		return vec3(0);
-	traceRay(origin, dir);
-	if(prd.worldPos.w * prd.worldPos.w < (distance2-1e-4))
-		return vec3(0);
-	return prd.emittance * ndl;
+	traceRay(origin, dir, dist+1e-2);
+	if(prd.worldPos.w >= dist-1e-2)
+	{
+		vec3 lightNormal = (vec4(cross(pos2-pos0, pos1-pos0), 0) * inverse(worldFromInstance)).xyz;
+		float triangleArea = sqrt(dot(lightNormal,lightNormal))/2;
+		float ndl = dot(dir, normal);
+		return prd.emittance * vec3(invPDF * ndl);//dist*dist, prd.worldPos.w*prd.worldPos.w, 0);
+	}
+	
+	return vec3(0);
 }
 
 void main()
@@ -149,8 +181,7 @@ void main()
 
 	for(int rayDepth = 0; rayDepth < pushC.maxBounces; rayDepth++)
 	{
-		traceRay(origin.xyz, direction.xyz);
-		if(prd.worldPos.w < 0) // Miss
+		if(!traceRay(origin.xyz, direction.xyz)) // Miss
 		{
 			rayAccumLight += pushC.clearColor.xyz * lightModulation;
 			break;
@@ -160,7 +191,7 @@ void main()
 		if(prd.emittance != vec3(0.0))
 		{
 			if(!nextEventEstimation || rayDepth == 0)
-				rayAccumLight += prd.emittance * lightModulation * 1000;
+				rayAccumLight += prd.emittance * lightModulation;
 			break; // Terminate ray early on emissive surfaces
 		}
 
@@ -179,6 +210,8 @@ void main()
 			rayAccumLight += lightModulation * explicitLightSampling(origin.xyz, hitNormal);
 		}
 	}
+
+	rayAccumLight = max(vec3(0), rayAccumLight);
 
 	// Do accumulation over time
 	if(pushC.frame > 0)
