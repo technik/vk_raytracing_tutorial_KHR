@@ -124,9 +124,7 @@ vec3 explicitLightSampling(in vec3 origin, in vec3 normal)
   	const vec3 pos0 = (worldFromInstance * vec4(getVertex(triangleIndex.x), 1.0)).xyz;
   	const vec3 pos1 = (worldFromInstance * vec4(getVertex(triangleIndex.y), 1.0)).xyz;
   	const vec3 pos2 = (worldFromInstance * vec4(getVertex(triangleIndex.z), 1.0)).xyz;
-  	float u = rnd(prd.seed);
-  	float v = rnd(prd.seed);
-  	vec3 vtxPos = mix(pos2, mix(pos1, pos0, u), v);
+  	vec3 vtxPos = sampleTriangle(prd.seed, pos0, pos1, pos2);
 
 	vec3 target = vtxPos.xyz;
 	vec3 dir = target - origin;

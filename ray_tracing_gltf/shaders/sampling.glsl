@@ -88,3 +88,12 @@ vec2 sampleDisk(inout uint seed, float rad)
   float sint = sqrt(1-cost*cost) * sign(t);
   return r*vec2(cost, sint);
 }
+
+// From Ray Tracing Gems: Sampling Transformations Zoo
+vec3 sampleTriangle(inout uint seed, in vec3 pos0, in vec3 pos1, in vec3 pos2)
+{
+  float beta = 1-sqrt(rnd(seed));
+  float gamma = (1-beta)*rnd(seed);
+  float alpha = 1-beta-gamma;
+  return alpha*pos0 + beta*pos1 + gamma*pos2;
+}
