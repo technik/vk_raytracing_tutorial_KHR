@@ -27,6 +27,7 @@ struct LightInstanceInfo
   uint indexOffset;
   uint numTriangles;
   uint matrixIndex;
+  float weightedRadiance;
 };
 
 struct EmissiveTriangleInfo
@@ -34,7 +35,14 @@ struct EmissiveTriangleInfo
   uint vtxOffset;
   uint indexOffset;
   uint matrixIndex;
+  float weightedRadiance;
 };
+
+struct AliasTable
+{
+  uint Ki;
+  float cutoff;
+}
 
 vec3 computeDiffuse(GltfShadeMaterial mat, vec3 lightDir, vec3 normal)
 {

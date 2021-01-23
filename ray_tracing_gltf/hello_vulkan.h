@@ -146,6 +146,8 @@ public:
   void resetFrame();
 
   void buildLightTables(vk::CommandBuffer cmdBuf);
+  void buildTriangleAliasTable();
+  void buildInstanceAliasTable();
 
   vk::PhysicalDeviceRayTracingPipelinePropertiesKHR   m_rtProperties;
   nvvk::RaytracingBuilderKHR                          m_rtBuilder;
@@ -179,6 +181,12 @@ public:
 		uint numEmissiveTris{ 0 };
 	} m_rtPushConstants;
 
+	struct SamplingAlias
+	{
+		uint32_t Ki{ 0 };
+		float cutOff{ 0.f };
+	};
+
 	// Two level ReSTIR
 	struct LightInstanceInfo
 	{
@@ -186,10 +194,12 @@ public:
 		uint indexOffset;
 		uint numTriangles;
 		uint matrixIndex;
+		float weightedRadiance;
 	};
 
 	std::vector<LightInstanceInfo> m_emissiveInstances;
 	nvvk::Buffer   m_lightsBuffer;
+	std::vector<SamplingAlias> m_instanceAliasTable;
 
 	// Triangle based approach
 	struct EmissiveTrangleInfo
@@ -197,7 +207,12 @@ public:
 		uint vtxOffset;
 		uint indexOffset;
 		uint matrixIndex;
+		float weightedRadiance;
+
+		float area(const nvh::GltfScene& scene);
 	};
+
 	std::vector<EmissiveTrangleInfo> m_emissiveTriangles;
 	nvvk::Buffer   m_emissiveTrianglesBuffer;
+	std::vector<SamplingAlias> m_triangleAliasTable;
 };

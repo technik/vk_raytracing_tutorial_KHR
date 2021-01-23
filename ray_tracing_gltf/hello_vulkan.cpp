@@ -310,6 +310,7 @@ bool isBinaryFile(const std::string& path)
 
 void HelloVulkan::buildLightTables(vk::CommandBuffer cmdBuf)
 {
+	float totalRadiance = 0.f;
 	for (size_t i = 0; i < m_gltfScene.m_nodes.size(); ++i)
 	{
 		auto& instance = m_gltfScene.m_nodes[i];
@@ -322,6 +323,7 @@ void HelloVulkan::buildLightTables(vk::CommandBuffer cmdBuf)
 			light.numTriangles = primitive.indexCount / 3;
 			light.vtxOffset = primitive.vertexOffset;
 			light.matrixIndex = i;
+			light.weightedRadiance = 0.f;
 			m_emissiveInstances.push_back(light);
 			// Individual triangles
 			m_emissiveTriangles.reserve(m_emissiveTriangles.size() + light.numTriangles);
@@ -331,9 +333,23 @@ void HelloVulkan::buildLightTables(vk::CommandBuffer cmdBuf)
 				triangle.vtxOffset = light.vtxOffset;
 				triangle.indexOffset = light.indexOffset + 3 * j;
 				triangle.matrixIndex = light.matrixIndex;
+				triangle.weightedRadiance = material.emissiveFactor.norm() * triangle.area(m_gltfScene);
 				m_emissiveTriangles.push_back(triangle);
+
+				light.weightedRadiance += triangle.weightedRadiance;
 			}
+			totalRadiance += light.weightedRadiance;
 		}
+	}
+
+	// Normalize radiance
+	for (auto& light : m_emissiveInstances)
+	{
+		light.weightedRadiance /= totalRadiance;
+	}
+	for (auto& tri : m_emissiveTriangles)
+	{
+		tri.weightedRadiance /= totalRadiance;
 	}
 
 	m_rtPushConstants.numLightInstances = m_emissiveInstances.size();
@@ -347,6 +363,77 @@ void HelloVulkan::buildLightTables(vk::CommandBuffer cmdBuf)
 		cmdBuf,
 		m_emissiveTriangles,
 		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+	buildTriangleAliasTable();
+	buildInstanceAliasTable();
+}
+
+void HelloVulkan::buildTriangleAliasTable()
+{
+	const auto numBuckets = m_emissiveTriangles.size();
+	float avgRadiance = 1.f / numBuckets;
+	m_triangleAliasTable.reserve(numBuckets);
+	std::vector<std::pair<float, size_t>> overflown;
+	std::vector<std::pair<float, size_t>> empty;
+	// Spread samples over initial buckets
+	for (auto& tri : m_emissiveTriangles)
+	{
+		auto i = m_triangleAliasTable.size();
+		SamplingAlias triangleAlias;
+		triangleAlias.cutOff = tri.weightedRadiance * numBuckets;
+		triangleAlias.Ki = i;
+		m_triangleAliasTable.push_back(triangleAlias);
+		if (triangleAlias.cutOff > 1)
+		{
+			overflown.emplace_back(triangleAlias.cutOff, i);
+		}
+		else
+		{
+			empty.emplace_back(triangleAlias.cutOff, i);
+		}
+	}
+	// Sort buckets
+	std::sort(empty.begin(), empty.end(), [](auto& a, auto& b) { return a.first < b.first; });
+	std::sort(overflown.begin(), overflown.end(), [](auto& a, auto& b) { return a.first < b.first; });
+	// Balance buckets and assign complementary samples
+	for (int i = 0; !overflown.empty() && i < empty.size(); ++i)
+	{
+		auto& dst = empty[i];
+		if (dst.first >= 1.f) // Not really empty
+			continue;
+		auto& src = overflown.back();
+		float transfer = 1.f - dst.first;
+		src.first -= transfer;
+		// Assign complement
+		m_triangleAliasTable[dst.second].Ki = src.second;
+		// Move src bucket
+		if (src.first <= 1.f)
+		{
+			empty.push_back(src);
+			overflown.pop_back();
+		}
+	}
+	for(auto& dst : empty)
+	{
+		// Assign final cutoffs
+		m_triangleAliasTable[dst.second].cutOff = dst.first;
+	}
+}
+
+void HelloVulkan::buildInstanceAliasTable()
+{}
+
+float HelloVulkan::EmissiveTrangleInfo::area(const nvh::GltfScene& scene)
+{
+	auto i0 = scene.m_indices[indexOffset + 0] + vtxOffset;
+	auto i1 = scene.m_indices[indexOffset + 1] + vtxOffset;
+	auto i2 = scene.m_indices[indexOffset + 2] + vtxOffset;
+	auto mtx = scene.m_nodes[matrixIndex].worldMatrix;
+	auto pos0 = vec3(mtx * vec4(scene.m_positions[i0], 1.f));
+	auto pos1 = vec3(mtx * vec4(scene.m_positions[i1], 1.f));
+	auto pos2 = vec3(mtx * vec4(scene.m_positions[i2], 1.f));
+	auto triangleNormal = cross(pos2 - pos0, pos1 - pos0);
+	return triangleNormal.norm() / 2;
 }
 
 //----------------------------------------------------------------------------------------------
