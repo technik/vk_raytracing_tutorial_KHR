@@ -42,7 +42,7 @@ struct AliasTable
 {
   uint Ki;
   float cutoff;
-}
+};
 
 vec3 computeDiffuse(GltfShadeMaterial mat, vec3 lightDir, vec3 normal)
 {

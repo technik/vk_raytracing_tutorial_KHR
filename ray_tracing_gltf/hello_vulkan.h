@@ -215,4 +215,5 @@ public:
 	std::vector<EmissiveTrangleInfo> m_emissiveTriangles;
 	nvvk::Buffer   m_emissiveTrianglesBuffer;
 	std::vector<SamplingAlias> m_triangleAliasTable;
+	nvvk::Buffer m_triangleAliasBuffer;
 };

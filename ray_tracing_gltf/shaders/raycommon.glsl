@@ -16,3 +16,4 @@ struct hitPayload
 #define FLAG_NO_DIFF	16
 #define FLAG_NEXT_EE	32
 #define FLAG_EMIS_TRIS	64
+#define FLAG_USE_ALIAS	128

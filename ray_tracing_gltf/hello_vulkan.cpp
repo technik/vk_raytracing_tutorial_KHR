@@ -61,6 +61,7 @@ extern std::vector<std::string> defaultSearchPaths;
 #define FLAG_NO_DIFF	16
 #define FLAG_NEXT_EE	32
 #define FLAG_EMIS_TRIS	64
+#define FLAG_USE_ALIAS	128
 
 // Holding the camera matrices
 struct CameraMatrices
@@ -102,9 +103,11 @@ void HelloVulkan::renderUI()
 		bool nextEventEstim = renderFlag(FLAG_NEXT_EE);
 		mustClean |= ImGui::Checkbox("Next Event", &nextEventEstim);
 		bool useEmmissiveTris = renderFlag(FLAG_EMIS_TRIS);
+		bool useAliasTables = renderFlag(FLAG_USE_ALIAS);
 		if (nextEventEstim)
 		{
 			mustClean |= ImGui::Checkbox("Emmisive Tris", &useEmmissiveTris);
+			mustClean |= ImGui::Checkbox("Alias Tables", &useAliasTables);
 		}
 
 		m_rtPushConstants.renderFlags =
@@ -114,7 +117,8 @@ void HelloVulkan::renderUI()
 			(showSpecular ? 0 : FLAG_NO_SPEC) |
 			(showDiffuse ? 0 : FLAG_NO_DIFF) |
 			(nextEventEstim ? FLAG_NEXT_EE : 0) |
-			(useEmmissiveTris ? FLAG_EMIS_TRIS : 0);
+			(useEmmissiveTris ? FLAG_EMIS_TRIS : 0) |
+			(useAliasTables ? FLAG_USE_ALIAS : 0);
 		if (dof)
 		{
 			float expFocalDistance = log10f(m_rtPushConstants.focalDistance);
@@ -219,6 +223,7 @@ void HelloVulkan::createDescriptorSetLayout()
   bind.addBinding(vkDS(B_TEXTURES, vkDT::eCombinedImageSampler, nbTextures, vkSS::eFragment | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
   bind.addBinding(vkDS(B_LIGHT_INST, vkDT::eStorageBuffer, 1, vkSS::eRaygenKHR));
   bind.addBinding(vkDS(B_LIGHT_TRIS, vkDT::eStorageBuffer, 1, vkSS::eRaygenKHR));
+  bind.addBinding(vkDS(B_TRI_ALIAS, vkDT::eStorageBuffer, 1, vkSS::eRaygenKHR));
 
 
   m_descSetLayout = m_descSetLayoutBind.createLayout(m_device);
@@ -244,6 +249,7 @@ void HelloVulkan::updateDescriptorSet()
   vk::DescriptorBufferInfo matrixDesc{ m_matrixBuffer.buffer, 0, VK_WHOLE_SIZE };
   vk::DescriptorBufferInfo lightInstDesc{m_lightsBuffer.buffer, 0, VK_WHOLE_SIZE};
   vk::DescriptorBufferInfo emTrisInstDesc{m_emissiveTrianglesBuffer.buffer, 0, VK_WHOLE_SIZE};
+  vk::DescriptorBufferInfo triangleAliasDesc{ m_triangleAliasBuffer.buffer, 0, VK_WHOLE_SIZE};
 
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_CAMERA, &dbiUnif));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_VERTICES, &vertexDesc));
@@ -255,6 +261,7 @@ void HelloVulkan::updateDescriptorSet()
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_MATRICES, &matrixDesc));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_LIGHT_INST, &lightInstDesc));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_LIGHT_TRIS, &emTrisInstDesc));
+  writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_TRI_ALIAS, &triangleAliasDesc));
 
   // All texture samplers
   std::vector<vk::DescriptorImageInfo> diit;
@@ -366,6 +373,11 @@ void HelloVulkan::buildLightTables(vk::CommandBuffer cmdBuf)
 
 	buildTriangleAliasTable();
 	buildInstanceAliasTable();
+
+	m_triangleAliasBuffer = m_alloc.createBuffer(
+		cmdBuf,
+		m_triangleAliasTable,
+		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
 }
 
 void HelloVulkan::buildTriangleAliasTable()
@@ -879,7 +891,7 @@ void HelloVulkan::createOffscreenRender()
 void HelloVulkan::createPostPipeline()
 {
   // Push constants in the fragment shader
-  vk::PushConstantRange pushConstantRanges = {vk::ShaderStageFlagBits::eFragment, 0, sizeof(float)};
+  vk::PushConstantRange pushConstantRanges = {vk::ShaderStageFlagBits::eFragment, 0, sizeof(PostPushConstant)};
 
   // Creating the pipeline layout
   vk::PipelineLayoutCreateInfo pipelineLayoutCreateInfo;
