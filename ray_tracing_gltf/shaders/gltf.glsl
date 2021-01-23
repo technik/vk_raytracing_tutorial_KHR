@@ -29,6 +29,12 @@ struct LightInstanceInfo
   uint matrixIndex;
 };
 
+struct EmissiveTriangleInfo
+{
+  uint vtxOffset;
+  uint indexOffset;
+  uint matrixIndex;
+};
 
 vec3 computeDiffuse(GltfShadeMaterial mat, vec3 lightDir, vec3 normal)
 {

@@ -30,6 +30,7 @@ layout(set = 1, binding = B_TEXTURES) uniform sampler2D texturesMap[]; // all te
 
 layout(push_constant) uniform Constants
 {
+    uint renderFlags;
     vec4  clearColor;
     int   frame;
     float lensRadius;
@@ -37,7 +38,7 @@ layout(push_constant) uniform Constants
     int maxBounces;
     int firstBounce;
     int numLightInstances;
-    uint renderFlags;
+    uint numEmissiveTriangles;
 }
 pushC;
 

@@ -168,6 +168,7 @@ public:
 
 	struct RtPushConstant
 	{
+		uint renderFlags{ 0 };
 		vec4  clearColor;
 		int   frame{ 0 };
 		float lensRadius{ 0.01f };
@@ -175,9 +176,10 @@ public:
 		int maxBounces{ 4 };
 		int firstBounce{ 0 };
 		int numLightInstances{ 0 };
-		uint renderFlags{ 0 };
+		uint numEmissiveTris{ 0 };
 	} m_rtPushConstants;
 
+	// Two level ReSTIR
 	struct LightInstanceInfo
 	{
 		uint vtxOffset;
@@ -186,7 +188,16 @@ public:
 		uint matrixIndex;
 	};
 
-	// ReSTIR
 	std::vector<LightInstanceInfo> m_emissiveInstances;
 	nvvk::Buffer   m_lightsBuffer;
+
+	// Triangle based approach
+	struct EmissiveTrangleInfo
+	{
+		uint vtxOffset;
+		uint indexOffset;
+		uint matrixIndex;
+	};
+	std::vector<EmissiveTrangleInfo> m_emissiveTriangles;
+	nvvk::Buffer   m_emissiveTrianglesBuffer;
 };

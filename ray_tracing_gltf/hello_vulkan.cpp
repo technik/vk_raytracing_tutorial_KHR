@@ -60,6 +60,7 @@ extern std::vector<std::string> defaultSearchPaths;
 #define FLAG_NO_SPEC	8
 #define FLAG_NO_DIFF	16
 #define FLAG_NEXT_EE	32
+#define FLAG_EMIS_TRIS	64
 
 // Holding the camera matrices
 struct CameraMatrices
@@ -79,7 +80,7 @@ void HelloVulkan::renderUI()
 	// Path tracing controls
 	ImGui::Checkbox("Accumulate", &m_accumulate);
 	float logExp = log2(m_postPushC.exposure);
-	ImGui::SliderFloat("EV steps", &logExp, -4.f, 4.f);
+	ImGui::SliderFloat("EV steps", &logExp, -4.f, 6.f);
 	m_postPushC.exposure = powf(2.f, logExp);
 	if (ImGui::CollapsingHeader("Reference path tracer"))
 	{
@@ -100,7 +101,11 @@ void HelloVulkan::renderUI()
 		mustClean |= ImGui::Checkbox("Diffuse", &showDiffuse);
 		bool nextEventEstim = renderFlag(FLAG_NEXT_EE);
 		mustClean |= ImGui::Checkbox("Next Event", &nextEventEstim);
-
+		bool useEmmissiveTris = renderFlag(FLAG_EMIS_TRIS);
+		if (nextEventEstim)
+		{
+			mustClean |= ImGui::Checkbox("Emmisive Tris", &useEmmissiveTris);
+		}
 
 		m_rtPushConstants.renderFlags =
 			(jitterAA ? FLAG_JITTER_AA : 0) |
@@ -108,14 +113,18 @@ void HelloVulkan::renderUI()
 			(albedo085 ? FLAG_ALBEDO_85 : 0) |
 			(showSpecular ? 0 : FLAG_NO_SPEC) |
 			(showDiffuse ? 0 : FLAG_NO_DIFF) |
-			(nextEventEstim ? FLAG_NEXT_EE : 0);
+			(nextEventEstim ? FLAG_NEXT_EE : 0) |
+			(useEmmissiveTris ? FLAG_EMIS_TRIS : 0);
 		if (dof)
 		{
 			float expFocalDistance = log10f(m_rtPushConstants.focalDistance);
-			mustClean |= ImGui::SliderFloat("Focal distance exp", &expFocalDistance, -3.f, 3.f);
+			mustClean |= ImGui::SliderFloat("Focal distance exp", &expFocalDistance, -5.f, 2.f);
 			mustClean |= ImGui::SliderFloat("Lens radius", &m_rtPushConstants.lensRadius, 0.f, 0.5f);
 			m_rtPushConstants.focalDistance = powf(10.f, expFocalDistance);
 		}
+
+		ImGui::Text("Emissive instances: %d", (int)m_emissiveInstances.size());
+		ImGui::Text("Emissive triangles: %d", (int)m_emissiveTriangles.size());
 	}
 	if (mustClean || !m_accumulate)
 	{
@@ -209,6 +218,7 @@ void HelloVulkan::createDescriptorSetLayout()
   auto nbTextures = static_cast<uint32_t>(m_textures.size());
   bind.addBinding(vkDS(B_TEXTURES, vkDT::eCombinedImageSampler, nbTextures, vkSS::eFragment | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
   bind.addBinding(vkDS(B_LIGHT_INST, vkDT::eStorageBuffer, 1, vkSS::eRaygenKHR));
+  bind.addBinding(vkDS(B_LIGHT_TRIS, vkDT::eStorageBuffer, 1, vkSS::eRaygenKHR));
 
 
   m_descSetLayout = m_descSetLayoutBind.createLayout(m_device);
@@ -233,6 +243,7 @@ void HelloVulkan::updateDescriptorSet()
   vk::DescriptorBufferInfo materialDesc{m_materialBuffer.buffer, 0, VK_WHOLE_SIZE};
   vk::DescriptorBufferInfo matrixDesc{ m_matrixBuffer.buffer, 0, VK_WHOLE_SIZE };
   vk::DescriptorBufferInfo lightInstDesc{m_lightsBuffer.buffer, 0, VK_WHOLE_SIZE};
+  vk::DescriptorBufferInfo emTrisInstDesc{m_emissiveTrianglesBuffer.buffer, 0, VK_WHOLE_SIZE};
 
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_CAMERA, &dbiUnif));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_VERTICES, &vertexDesc));
@@ -243,6 +254,7 @@ void HelloVulkan::updateDescriptorSet()
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_MATERIALS, &materialDesc));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_MATRICES, &matrixDesc));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_LIGHT_INST, &lightInstDesc));
+  writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_LIGHT_TRIS, &emTrisInstDesc));
 
   // All texture samplers
   std::vector<vk::DescriptorImageInfo> diit;
@@ -311,13 +323,29 @@ void HelloVulkan::buildLightTables(vk::CommandBuffer cmdBuf)
 			light.vtxOffset = primitive.vertexOffset;
 			light.matrixIndex = i;
 			m_emissiveInstances.push_back(light);
+			// Individual triangles
+			m_emissiveTriangles.reserve(m_emissiveTriangles.size() + light.numTriangles);
+			for (size_t j = 0; j < light.numTriangles; ++j)
+			{
+				EmissiveTrangleInfo triangle;
+				triangle.vtxOffset = light.vtxOffset;
+				triangle.indexOffset = light.indexOffset + 3 * j;
+				triangle.matrixIndex = light.matrixIndex;
+				m_emissiveTriangles.push_back(triangle);
+			}
 		}
 	}
 
 	m_rtPushConstants.numLightInstances = m_emissiveInstances.size();
+	m_rtPushConstants.numEmissiveTris = m_emissiveTriangles.size();
 	m_lightsBuffer = m_alloc.createBuffer(
 		cmdBuf,
 		m_emissiveInstances,
+		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+	m_emissiveTrianglesBuffer = m_alloc.createBuffer(
+		cmdBuf,
+		m_emissiveTriangles,
 		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
 }
 

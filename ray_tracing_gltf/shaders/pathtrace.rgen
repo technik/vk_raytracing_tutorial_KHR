@@ -16,6 +16,7 @@ layout(set = 0, binding = 2) readonly buffer _InstanceInfo {PrimMeshInfo primInf
 // For light sampling
 layout(set = 1, binding = B_MATRICES) readonly buffer _Matrix { mat4 matrices[]; };
 layout(set = 1, binding = B_LIGHT_INST) readonly buffer _LightInstance { LightInstanceInfo lightIstances[]; };
+layout(set = 1, binding = B_LIGHT_TRIS) readonly buffer _EmissiveTriangle { EmissiveTriangleInfo emissiveTriangles[]; };
 layout(set = 1, binding = B_VERTICES) readonly buffer _VertexBuf {float vertices[];};
 layout(set = 1, binding = B_INDICES) readonly buffer _Indices {uint indices[];};
 
@@ -32,6 +33,7 @@ cam;
 
 layout(push_constant) uniform Constants
 {
+    uint renderFlags;
     vec4  clearColor;
     int   frame;
     float lensRadius;
@@ -39,7 +41,7 @@ layout(push_constant) uniform Constants
     int maxBounces;
     int firstBounce;
     int numLightInstances;
-    uint renderFlags;
+    uint numEmissiveTriangles;
 }
 pushC;
 
@@ -134,25 +136,76 @@ vec3 getVertex(uint index)
   return vp;
 }
 
-vec3 explicitLightSampling(in vec3 origin, in vec3 normal, in vec3 eye, in vec3 diffuse, in vec3 specular, float roughness)
+// No dot(n,l) included
+vec3 brdfModulation(in vec3 normal, in vec3 eye, in vec3 light, in vec3 diff, in vec3 spec, float roughness)
 {
+	vec3 H = normalize(eye+light);
+	float hdl = max(0,dot(H,light));
+	float alpha = roughness*roughness;
+	float ndl = max(0,dot(normal, light));
+	float D = D_GGX(ndl, alpha);
+	float ndv = max(0,dot(eye,normal));
+	float V = SmithGGX_G2Approx(ndv, ndl, alpha);
+
+	vec3 kS = F_Schlick(hdl, spec) * D * V;
+	vec3 kD = diff / M_PI; // TODO: Proper energy conservation
+	return kD + kS;
+}
+
+EmissiveTriangleInfo sampleTwoLevelLight(out float invPdf)
+{
+	EmissiveTriangleInfo result;
+
 	// Choose an emissive mesh
 	uint nLights = pushC.numLightInstances;
 	uint emitterIndex = lcg(prd.seed) % nLights;
 	LightInstanceInfo lightInfo = lightIstances[emitterIndex];
 
-	// Choose a triangle
 	// Retrieve the Primitive mesh buffer information
 	uint triNdx = lcg(prd.seed) % lightInfo.numTriangles;
+	invPdf = nLights * lightInfo.numTriangles;
 
 	// Getting the 'first index' for this mesh (offset of the mesh + offset of the triangle)
-	uint indexOffset  = lightInfo.indexOffset + (3 * triNdx);
-	uint vertexOffset = lightInfo.vtxOffset;           // Vertex offset as defined in glTF
+	result.indexOffset = lightInfo.indexOffset + (3 * triNdx);
+	result.vtxOffset = lightInfo.vtxOffset;           // Vertex offset as defined in glTF
+	result.matrixIndex = lightInfo.matrixIndex;
+
+	return result;
+}
+
+EmissiveTriangleInfo sampleEmissiveTris(out float invPdf)
+{
+	EmissiveTriangleInfo result;
+
+	// Choose an emissive mesh
+	uint nLights = pushC.numEmissiveTriangles;
+	invPdf = nLights;
+	uint emitterIndex = lcg(prd.seed) % nLights;
+	result = emissiveTriangles[emitterIndex];
+
+	return result;
+}
+
+vec3 explicitLightSampling(in vec3 origin, in vec3 normal, in vec3 eye, in vec3 diffuse, in vec3 specular, float roughness)
+{
+	// Choose a triangle
+	float invPDF = 1;
+	EmissiveTriangleInfo lightInfo;
+	if(renderFlag(FLAG_EMIS_TRIS))
+	{
+		lightInfo = sampleEmissiveTris(invPDF);
+	}
+	else
+	{
+		lightInfo = sampleTwoLevelLight(invPDF);
+	}
+
 	// Getting the 3 indices of the triangle (local)
+	uint indexOffset = lightInfo.indexOffset;
 	ivec3 triangleIndex = ivec3(indices[nonuniformEXT(indexOffset + 0)],  //
 	                          indices[nonuniformEXT(indexOffset + 1)],  //
 	                          indices[nonuniformEXT(indexOffset + 2)]);
-	triangleIndex += ivec3(vertexOffset);  // (global)
+	triangleIndex += ivec3(lightInfo.vtxOffset);  // (global)
 
   	// Sample the triangle
   	mat4 worldFromInstance = matrices[lightInfo.matrixIndex];
@@ -177,18 +230,9 @@ vec3 explicitLightSampling(in vec3 origin, in vec3 normal, in vec3 eye, in vec3 
 	{
 		vec3 lightNormal = cross(pos2-pos0, pos1-pos0);
 		float triangleArea = sqrt(dot(lightNormal,lightNormal))/2;
-		float invPDF = nLights * lightInfo.numTriangles;
 		float ndl = dot(dir, normal);
 		// BRDF
-		vec3 kD = diffuse / M_PI;
-		vec3 H = normalize(eye+dir);
-		float hdl = max(0,dot(H,dir));
-		float alpha = roughness*roughness;
-		float D = D_GGX(ndl, alpha);
-		float ndv = max(0,dot(eye,normal));
-		float V = SmithGGX_G2Approx(ndv, ndl, alpha);
-		vec3 kS = 0* F_Schlick(hdl, specular) * D * V;
-		vec3 brdf = (kD + kS) * ndl;
+		vec3 brdf = brdfModulation(normal,eye,dir,diffuse,specular,roughness) * ndl;
 		return prd.emittance * brdf * vec3(triangleArea * invPDF / dist2 * max(0,dot(normalize(lightNormal),dir)));
 	}
 	
@@ -245,28 +289,27 @@ void main()
 		createCoordinateSystem(hitNormal, tangent, bitangent);
 		vec3 diffuseColor = prd.baseColor.xyz * (1-prd.metallic);
 		vec3 specColor = mix(vec3(0.04),prd.baseColor.xyz,prd.metallic);
-
-		// BRDF
-		vec3 kD = diffuseColor / M_PI;
 	
 		// Next
 		origin.xyz = prd.worldPos.xyz + hitNormal * max(1e-6, 1e-6 * prd.worldPos.w);
 
 		// Explicit light sampling
+		vec3 eye = -direction.xyz;
+		float roughness = prd.roughness;
 		if(nextEventEstimation)
 		{
 			rayAccumLight += lightModulation * explicitLightSampling(
 				origin.xyz,
 				hitNormal,
-				-direction.xyz,
+				eye,
 				diffuseColor,
 				specColor,
-				prd.roughness);
+				roughness);
 		}
 
 		// Next ray
 		direction.xyz = samplingCosHemisphere(prd.seed, tangent, bitangent, hitNormal);
-		lightModulation *= kD;
+		lightModulation *= brdfModulation(hitNormal,eye,direction.xyz,diffuseColor,specColor,roughness);
 	}
 
 	rayAccumLight = max(vec3(0), rayAccumLight);
