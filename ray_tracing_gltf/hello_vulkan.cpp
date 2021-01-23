@@ -224,6 +224,7 @@ void HelloVulkan::createDescriptorSetLayout()
   bind.addBinding(vkDS(B_LIGHT_INST, vkDT::eStorageBuffer, 1, vkSS::eRaygenKHR));
   bind.addBinding(vkDS(B_LIGHT_TRIS, vkDT::eStorageBuffer, 1, vkSS::eRaygenKHR));
   bind.addBinding(vkDS(B_TRI_ALIAS, vkDT::eStorageBuffer, 1, vkSS::eRaygenKHR));
+  bind.addBinding(vkDS(B_LIGHT_ALIAS, vkDT::eStorageBuffer, 1, vkSS::eRaygenKHR));
 
 
   m_descSetLayout = m_descSetLayoutBind.createLayout(m_device);
@@ -250,6 +251,7 @@ void HelloVulkan::updateDescriptorSet()
   vk::DescriptorBufferInfo lightInstDesc{m_lightsBuffer.buffer, 0, VK_WHOLE_SIZE};
   vk::DescriptorBufferInfo emTrisInstDesc{m_emissiveTrianglesBuffer.buffer, 0, VK_WHOLE_SIZE};
   vk::DescriptorBufferInfo triangleAliasDesc{ m_triangleAliasBuffer.buffer, 0, VK_WHOLE_SIZE};
+  vk::DescriptorBufferInfo instanceAliasDesc{ m_instanceAliasBuffer.buffer, 0, VK_WHOLE_SIZE};
 
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_CAMERA, &dbiUnif));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_VERTICES, &vertexDesc));
@@ -262,6 +264,7 @@ void HelloVulkan::updateDescriptorSet()
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_LIGHT_INST, &lightInstDesc));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_LIGHT_TRIS, &emTrisInstDesc));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_TRI_ALIAS, &triangleAliasDesc));
+  writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_LIGHT_ALIAS, &instanceAliasDesc));
 
   // All texture samplers
   std::vector<vk::DescriptorImageInfo> diit;
@@ -331,7 +334,6 @@ void HelloVulkan::buildLightTables(vk::CommandBuffer cmdBuf)
 			light.vtxOffset = primitive.vertexOffset;
 			light.matrixIndex = i;
 			light.weightedRadiance = 0.f;
-			m_emissiveInstances.push_back(light);
 			// Individual triangles
 			m_emissiveTriangles.reserve(m_emissiveTriangles.size() + light.numTriangles);
 			for (size_t j = 0; j < light.numTriangles; ++j)
@@ -346,6 +348,7 @@ void HelloVulkan::buildLightTables(vk::CommandBuffer cmdBuf)
 				light.weightedRadiance += triangle.weightedRadiance;
 			}
 			totalRadiance += light.weightedRadiance;
+			m_emissiveInstances.push_back(light);
 		}
 	}
 
@@ -377,6 +380,11 @@ void HelloVulkan::buildLightTables(vk::CommandBuffer cmdBuf)
 	m_triangleAliasBuffer = m_alloc.createBuffer(
 		cmdBuf,
 		m_triangleAliasTable,
+		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+	m_instanceAliasBuffer = m_alloc.createBuffer(
+		cmdBuf,
+		m_instanceAliasTable,
 		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
 }
 
@@ -433,7 +441,56 @@ void HelloVulkan::buildTriangleAliasTable()
 }
 
 void HelloVulkan::buildInstanceAliasTable()
-{}
+{
+	const auto numBuckets = m_emissiveInstances.size();
+	float avgRadiance = 1.f / numBuckets;
+	m_instanceAliasTable.reserve(numBuckets);
+	std::vector<std::pair<float, size_t>> overflown;
+	std::vector<std::pair<float, size_t>> empty;
+	// Spread samples over initial buckets
+	for (auto& light : m_emissiveInstances)
+	{
+		auto i = m_instanceAliasTable.size();
+		SamplingAlias alias;
+		alias.cutOff = light.weightedRadiance * numBuckets;
+		alias.Ki = i;
+		m_instanceAliasTable.push_back(alias);
+		if (alias.cutOff > 1)
+		{
+			overflown.emplace_back(alias.cutOff, i);
+		}
+		else
+		{
+			empty.emplace_back(alias.cutOff, i);
+		}
+	}
+	// Sort buckets
+	std::sort(empty.begin(), empty.end(), [](auto& a, auto& b) { return a.first < b.first; });
+	std::sort(overflown.begin(), overflown.end(), [](auto& a, auto& b) { return a.first < b.first; });
+	// Balance buckets and assign complementary samples
+	for (int i = 0; !overflown.empty() && i < empty.size(); ++i)
+	{
+		auto& dst = empty[i];
+		if (dst.first >= 1.f) // Not really empty
+			continue;
+		auto& src = overflown.back();
+		float transfer = 1.f - dst.first;
+		src.first -= transfer;
+		// Assign complement
+		m_instanceAliasTable[dst.second].Ki = src.second;
+		// Move src bucket
+		if (src.first <= 1.f)
+		{
+			empty.push_back(src);
+			overflown.pop_back();
+		}
+	}
+	for (auto& dst : empty)
+	{
+		// Assign final cutoffs
+		m_instanceAliasTable[dst.second].cutOff = dst.first;
+	}
+}
 
 float HelloVulkan::EmissiveTrangleInfo::area(const nvh::GltfScene& scene)
 {
@@ -753,6 +810,12 @@ void HelloVulkan::destroyResources()
   m_device.destroy(m_rtDescPool);
   m_device.destroy(m_rtDescSetLayout);
   m_rtPipeline.reset();
+
+  // Light sampling
+  m_alloc.destroy(m_lightsBuffer);
+  m_alloc.destroy(m_instanceAliasBuffer);
+  m_alloc.destroy(m_triangleAliasBuffer);
+  m_alloc.destroy(m_emissiveTrianglesBuffer);
 }
 
 //--------------------------------------------------------------------------------------------------

@@ -18,6 +18,7 @@ layout(set = 1, binding = B_MATRICES) readonly buffer _Matrix { mat4 matrices[];
 layout(set = 1, binding = B_LIGHT_INST) readonly buffer _LightInstance { LightInstanceInfo lightIstances[]; };
 layout(set = 1, binding = B_LIGHT_TRIS) readonly buffer _EmissiveTriangle { EmissiveTriangleInfo emissiveTriangles[]; };
 layout(set = 1, binding = B_TRI_ALIAS) readonly buffer _TriangleAlias { AliasTable triangleAlias[]; };
+layout(set = 1, binding = B_LIGHT_ALIAS) readonly buffer _LightAlias { AliasTable lightAlias[]; };
 layout(set = 1, binding = B_VERTICES) readonly buffer _VertexBuf {float vertices[];};
 layout(set = 1, binding = B_INDICES) readonly buffer _Indices {uint indices[];};
 
@@ -159,12 +160,29 @@ EmissiveTriangleInfo sampleTwoLevelLight(out float invPdf)
 
 	// Choose an emissive mesh
 	uint nLights = pushC.numLightInstances;
-	uint emitterIndex = lcg(prd.seed) % nLights;
-	LightInstanceInfo lightInfo = lightIstances[nonuniformEXT(emitterIndex)];
+	uint emitterIndex;
+	LightInstanceInfo lightInfo;
+	if(renderFlag(FLAG_USE_ALIAS))
+	{
+		// Choose an alias
+		float r = rnd(prd.seed)*nLights;
+		uint bucket = uint(r);
+		float p = r-bucket;
+		AliasTable alias = lightAlias[nonuniformEXT(bucket)];
+		uint emitterIndex = (p>alias.cutoff) ? alias.Ki : bucket;
+
+		lightInfo = lightIstances[nonuniformEXT(emitterIndex)];
+		invPdf = lightInfo.numTriangles / lightInfo.weightedRadiance;
+	}
+	else
+	{
+		emitterIndex = lcg(prd.seed) % nLights;
+		lightInfo = lightIstances[nonuniformEXT(emitterIndex)];
+		invPdf = nLights * lightInfo.numTriangles;
+	}
 
 	// Retrieve the Primitive mesh buffer information
 	uint triNdx = lcg(prd.seed) % lightInfo.numTriangles;
-	invPdf = nLights * lightInfo.numTriangles;
 
 	// Getting the 'first index' for this mesh (offset of the mesh + offset of the triangle)
 	result.indexOffset = lightInfo.indexOffset + (3 * triNdx);

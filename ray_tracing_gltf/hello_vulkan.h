@@ -200,6 +200,7 @@ public:
 	std::vector<LightInstanceInfo> m_emissiveInstances;
 	nvvk::Buffer   m_lightsBuffer;
 	std::vector<SamplingAlias> m_instanceAliasTable;
+	nvvk::Buffer m_instanceAliasBuffer;
 
 	// Triangle based approach
 	struct EmissiveTrangleInfo
