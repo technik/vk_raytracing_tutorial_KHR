@@ -549,7 +549,8 @@ void GltfScene::processMesh(const tinygltf::Model& tmodel, const tinygltf::Primi
         float t1 = uv2.y - uv1.y;
         float t2 = uv3.y - uv1.y;
 
-        float         r = 1.0F / (s1 * t2 - s2 * t1);
+		float det = (s1 * t2 - s2 * t1);
+        float         r = 1.0F / det;
         nvmath::vec3f sdir((t2 * x1 - t1 * x2) * r, (t2 * y1 - t1 * y2) * r, (t2 * z1 - t1 * z2) * r);
         nvmath::vec3f tdir((s1 * x2 - s2 * x1) * r, (s1 * y2 - s2 * y1) * r, (s1 * z2 - s2 * z1) * r);
 
@@ -567,6 +568,15 @@ void GltfScene::processMesh(const tinygltf::Model& tmodel, const tinygltf::Primi
             sdir = vec3(0, -N.z, N.y) / sqrt(N.y * N.y + N.z * N.z);
           tdir = nvmath::cross(N, sdir);
         }
+		else if (det == 0) // Degenerated triangles
+		{
+			sdir = normalize(pos2 - pos1);
+			tdir = normalize(pos3 - pos1);
+			tdir = normalize(tdir - sdir * dot(sdir, tdir));
+
+			//assert(tdir.norm() > 1e-5);
+			//assert(sdir.norm() > 1e-5);
+		}
 
         tan1[l_idx0] += sdir;
         tan1[l_idx1] += sdir;
@@ -575,6 +585,13 @@ void GltfScene::processMesh(const tinygltf::Model& tmodel, const tinygltf::Primi
         tan2[l_idx0] += tdir;
         tan2[l_idx1] += tdir;
         tan2[l_idx2] += tdir;
+
+		/*assert(tan1[l_idx0].norm() > 1e-5);
+		assert(tan1[l_idx1].norm() > 1e-5);
+		assert(tan1[l_idx2].norm() > 1e-5);
+		assert(tan2[l_idx0].norm() > 1e-5);
+		assert(tan2[l_idx1].norm() > 1e-5);
+		assert(tan2[l_idx2].norm() > 1e-5);*/
       }
 
       for(uint32_t a = 0; a < resultMesh.vertexCount; a++)
@@ -585,6 +602,7 @@ void GltfScene::processMesh(const tinygltf::Model& tmodel, const tinygltf::Primi
 
         // Gram-Schmidt orthogonalize
         nvmath::vec3f tangent = nvmath::normalize(t1 - n * nvmath::dot(n, t1));
+		//assert(dot(tangent, tangent) > 0.99f);
 
         // Calculate handedness
         float handedness = (nvmath::dot(nvmath::cross(n, t1), t2) < 0.0F) ? -1.0F : 1.0F;

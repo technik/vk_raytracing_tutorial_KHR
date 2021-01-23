@@ -5,6 +5,10 @@ struct GltfShadeMaterial
   int  pbrBaseColorTexture;
   vec3 emissiveFactor;
   int  emissiveTexture;
+  int  normalTexture;
+  int   pbrMetallicRoughnessTexture;
+  float roughness;
+  float metallic;
   int padding[3];
 };
 

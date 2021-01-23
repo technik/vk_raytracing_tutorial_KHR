@@ -48,6 +48,41 @@ bool renderFlag(uint flag)
 	return (pushC.renderFlags & flag) > 0;
 }
 
+float D_GGX(float ndh, float a) {
+    float k = a / max(1e-4, (ndh * ndh)*(a*a-1) + 1);
+    return k * k / M_PI;
+}
+
+// Earl Hammon's Diffuse GGX talk
+// Predivided by 4*ndl*ndv
+float SmithGGX_G2Approx(float ndv, float ndl, float a)
+{
+    return 0.5 / mix(2*ndl*ndv, ndl+ndv, a);
+}
+
+// Actually returns G1/(2NdV) as it cancels out some terms in the VNDF estimator
+float SmithGGXG1(float ndv, float alpha)
+{
+	float a2 = alpha*alpha;
+	float num = 2*ndv;
+	float den = ndv + sqrt(a2 + (1-a2)*ndv*ndv);
+	return num / max(den,1e-6);
+}
+
+float SmithGGX_G2_over_G1(float ndv, float ndl, float alpha)
+{
+	float a2 = alpha*alpha;
+	float den = ndv + sqrt(a2+(1-a2)*ndv*ndv);
+	return den * 0.5 / mix(2*ndl*ndv, ndl+ndv, alpha);
+}
+
+vec3 F_Schlick(float hdl, vec3 f0) {
+    float p = (1-hdl);
+    float p2 = p*p;
+    float p5 = p*p2*p2;
+    return f0 + (1.0 - f0) * p5;
+}
+
 bool traceRay(in vec3 ro, in vec3 rd)
 {
     uint  rayFlags = gl_RayFlagsOpaqueEXT;
@@ -99,7 +134,7 @@ vec3 getVertex(uint index)
   return vp;
 }
 
-vec3 explicitLightSampling(in vec3 origin, in vec3 normal)
+vec3 explicitLightSampling(in vec3 origin, in vec3 normal, in vec3 eye, in vec3 diffuse, in vec3 specular, float roughness)
 {
 	// Choose an emissive mesh
 	uint nLights = pushC.numLightInstances;
@@ -133,17 +168,28 @@ vec3 explicitLightSampling(in vec3 origin, in vec3 normal)
 		return vec3(0);
 	}
 	
-	float dist = sqrt(dot(dir,dir));
+	float dist2 = dot(dir,dir);
+	float dist = sqrt(dist2);
 	
 	dir = normalize(dir);
-	traceRay(origin, dir, dist+1e-2);
-	if(prd.worldPos.w >= dist-1e-2)
+	traceRay(origin, dir, dist+1e-3);
+	if(prd.worldPos.w >= dist-1e-3)
 	{
 		vec3 lightNormal = cross(pos2-pos0, pos1-pos0);
 		float triangleArea = sqrt(dot(lightNormal,lightNormal))/2;
 		float invPDF = nLights * lightInfo.numTriangles;
 		float ndl = dot(dir, normal);
-		return triangleArea * prd.emittance * vec3(invPDF * ndl / (dist*dist));//dist*dist, prd.worldPos.w*prd.worldPos.w, 0);
+		// BRDF
+		vec3 kD = diffuse / M_PI;
+		vec3 H = normalize(eye+dir);
+		float hdl = max(0,dot(H,dir));
+		float alpha = roughness*roughness;
+		float D = D_GGX(ndl, alpha);
+		float ndv = max(0,dot(eye,normal));
+		float V = SmithGGX_G2Approx(ndv, ndl, alpha);
+		vec3 kS = 0* F_Schlick(hdl, specular) * D * V;
+		vec3 brdf = (kD + kS) * ndl;
+		return prd.emittance * brdf * vec3(triangleArea * invPDF / dist2 * max(0,dot(normalize(lightNormal),dir)));
 	}
 	
 	return vec3(0);
@@ -176,7 +222,8 @@ void main()
 
 	const bool nextEventEstimation = renderFlag(FLAG_NEXT_EE);
 
-	for(int rayDepth = 0; rayDepth < pushC.maxBounces; rayDepth++)
+	int maxDepth = nextEventEstimation ? pushC.maxBounces : (pushC.maxBounces+1);
+	for(int rayDepth = 0; rayDepth < maxDepth; rayDepth++)
 	{
 		if(!traceRay(origin.xyz, direction.xyz)) // Miss
 		{
@@ -196,16 +243,30 @@ void main()
 		vec3 hitNormal = prd.worldNormal;
 		vec3 tangent, bitangent;
 		createCoordinateSystem(hitNormal, tangent, bitangent);
+		vec3 diffuseColor = prd.baseColor.xyz * (1-prd.metallic);
+		vec3 specColor = mix(vec3(0.04),prd.baseColor.xyz,prd.metallic);
 
+		// BRDF
+		vec3 kD = diffuseColor / M_PI;
+	
+		// Next
 		origin.xyz = prd.worldPos.xyz + hitNormal * max(1e-6, 1e-6 * prd.worldPos.w);
-		direction.xyz = samplingCosHemisphere(prd.seed, tangent, bitangent, hitNormal);
-		lightModulation *= prd.baseColor / M_PI;
 
 		// Explicit light sampling
 		if(nextEventEstimation)
 		{
-			rayAccumLight += lightModulation * explicitLightSampling(origin.xyz, hitNormal);
+			rayAccumLight += lightModulation * explicitLightSampling(
+				origin.xyz,
+				hitNormal,
+				-direction.xyz,
+				diffuseColor,
+				specColor,
+				prd.roughness);
 		}
+
+		// Next ray
+		direction.xyz = samplingCosHemisphere(prd.seed, tangent, bitangent, hitNormal);
+		lightModulation *= kD;
 	}
 
 	rayAccumLight = max(vec3(0), rayAccumLight);

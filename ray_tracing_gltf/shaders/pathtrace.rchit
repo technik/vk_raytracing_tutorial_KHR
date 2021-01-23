@@ -22,6 +22,7 @@ layout(set = 0, binding = 2) readonly buffer _InstanceInfo {PrimMeshInfo primInf
 layout(set = 1, binding = B_VERTICES) readonly buffer _VertexBuf {float vertices[];};
 layout(set = 1, binding = B_INDICES) readonly buffer _Indices {uint indices[];};
 layout(set = 1, binding = B_NORMALS) readonly buffer _NormalBuf {float normals[];};
+layout(set = 1, binding = B_TANGENTS) readonly buffer _TangentBuf {float tangents[];};
 layout(set = 1, binding = B_TEXCOORDS) readonly buffer _TexCoordBuf {float texcoord0[];};
 layout(set = 1, binding = B_MATERIALS) readonly buffer _MaterialBuffer {GltfShadeMaterial materials[];};
 layout(set = 1, binding = B_TEXTURES) uniform sampler2D texturesMap[]; // all textures
@@ -64,6 +65,16 @@ vec3 getNormal(uint index)
   return vp;
 }
 
+vec4 getTangent(uint index)
+{
+  vec4 vp;
+  vp.x = tangents[4 * index + 0];
+  vp.y = tangents[4 * index + 1];
+  vp.z = tangents[4 * index + 2];
+  vp.w = tangents[4 * index + 3];
+  return vp;
+}
+
 vec2 getTexCoord(uint index)
 {
   vec2 vp;
@@ -102,59 +113,96 @@ void main()
   const vec3 nrm0 = getNormal(triangleIndex.x);
   const vec3 nrm1 = getNormal(triangleIndex.y);
   const vec3 nrm2 = getNormal(triangleIndex.z);
-  vec3 normal = normalize(nrm0 * barycentrics.x + nrm1 * barycentrics.y + nrm2 * barycentrics.z);
-  const vec3 world_normal = normalize(vec3(normal * gl_WorldToObjectEXT));
-  const vec3 geom_normal  = normalize(cross(pos1 - pos0, pos2 - pos0));
+  vec3 msNormal = normalize(nrm0 * barycentrics.x + nrm1 * barycentrics.y + nrm2 * barycentrics.z);
+  vec3 worldNormal = normalize(vec3(msNormal * gl_WorldToObjectEXT));
 
-  // TexCoord
-  const vec2 uv0       = getTexCoord(triangleIndex.x);
-  const vec2 uv1       = getTexCoord(triangleIndex.y);
-  const vec2 uv2       = getTexCoord(triangleIndex.z);
-  vec2 texcoord0 = uv0 * barycentrics.x + uv1 * barycentrics.y + uv2 * barycentrics.z;
+    // TexCoord
+    const vec2 uv0       = getTexCoord(triangleIndex.x);
+    const vec2 uv1       = getTexCoord(triangleIndex.y);
+    const vec2 uv2       = getTexCoord(triangleIndex.z);
+    const vec2 texcoord0 = uv0 * barycentrics.x + uv1 * barycentrics.y + uv2 * barycentrics.z;
 
-  prd.worldPos.xyz = world_position;
-  prd.worldPos.w = gl_HitTEXT;
-  prd.worldNormal = world_normal;
+    prd.metallic = 0;
+    prd.roughness = 1;
+    prd.worldPos.xyz = world_position;
+    prd.worldPos.w = gl_HitTEXT;
+    // Material of the object
+    if(matIndex >= 0)
+    {
+        GltfShadeMaterial mat = materials[nonuniformEXT(matIndex)];
+        // Emissive color
+        prd.emittance = mat.emissiveFactor;
+        if(mat.emissiveTexture > -1)
+        {
+            uint txtId = mat.emissiveTexture;
+            prd.emittance *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz * 10;
+        }
+        // baseColor
+        prd.baseColor    = mat.pbrBaseColorFactor.xyz;
+        if(mat.pbrBaseColorTexture > -1)
+        {
+            uint txtId = mat.pbrBaseColorTexture;
+            prd.baseColor *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
+        }
 
-  // Material of the object
-  if(matIndex >= 0)
-  {
-      GltfShadeMaterial mat = materials[nonuniformEXT(matIndex)];
-      // Emissive color
-      prd.emittance = mat.emissiveFactor;
-      if(mat.emissiveTexture > -1)
-      {
-          uint txtId = mat.emissiveTexture;
-          prd.emittance *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz * 100;
-      }
-      // baseColor
-      prd.baseColor = mat.pbrBaseColorFactor.xyz;
-      if(mat.pbrBaseColorTexture > -1)
-      {
-          uint txtId = mat.pbrBaseColorTexture;
-          prd.baseColor *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
-      }
+        if(mat.normalTexture >= 0)
+        {
+            // Tangent
+            vec4 tan0 = getTangent(triangleIndex.x);
+            vec4 tan1 = getTangent(triangleIndex.y);
+            vec4 tan2 = getTangent(triangleIndex.z);
+            vec4 msTangent = tan0 * barycentrics.x + tan1 * barycentrics.y + tan2 * barycentrics.z;
 
-      // Metallic & Roughness
-      /*prd.metallic = mat.pbrMetallicFactor;
-      prd.roughness = mat.pbrRoughnessFactor;
-      if(mat.pbrMetallicRoughnessTexture > -1)
-      {
-          uint txtId = mat.pbrMetallicRoughnessTexture;
-          vec3 metallicRoughness = texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
-          prd.metallic *= metallicRoughness.b;
-          prd.roughness *= metallicRoughness.g;
-      }*/
-  }
-  else
-  {
-      prd.baseColor = vec3(1);
-      prd.emittance = vec3(0);
-      prd.metallic = 0.0;
-      prd.roughness = 1.0;
-  }
-  if(renderFlag(FLAG_ALBEDO_85))
-  {
-    prd.baseColor = vec3(0.85);
-  }
+            vec3 wsTangent = normalize(vec3(msTangent.xyz * gl_WorldToObjectEXT));
+            //wsTangent -= worldNormal * dot(worldNormal,wsTangent);
+            //wsTangent = normalize(wsTangent);
+            vec3 wsBitangent = cross(worldNormal, wsTangent) * msTangent.w;
+
+            mat3 worldFromTangent = mat3(wsTangent, wsBitangent, worldNormal);
+
+            uint txtId = mat.normalTexture;
+            vec3 tsNormal = texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
+            tsNormal = pow(tsNormal, vec3(1/2.2)) + vec3(0,0,1e-2);
+            tsNormal = normalize(tsNormal * 255.0 - 127.0);
+            worldNormal = normalize(worldFromTangent * tsNormal);
+            //prd.baseColor = worldNormal;
+            //prd.baseColor = abs(msTangent.xyz);
+            //prd.baseColor = abs(tan2.xyz);
+            //prd.baseColor = normalize(worldFromTangent * vec3(0,0,1));
+            //prd.baseColor = normalize(worldFromTangent * tsNormal);
+        }
+
+        // Encode transmission in baseColor's alpha
+        /*float transmissionFactor = mat.transmissionFactor;
+        if(mat.transmissionTexture >= 0)
+        {
+            uint txtId = mat.transmissionTexture;
+            transmissionFactor *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).r;
+        }
+        prd.baseColor.a = transmissionFactor;*/
+
+        // Metallic & Roughness
+        prd.metallic = mat.metallic;
+        prd.roughness = mat.roughness;
+        if(mat.pbrMetallicRoughnessTexture > -1)
+        {
+            uint txtId = mat.pbrMetallicRoughnessTexture;
+            vec3 metallicRoughness = texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
+            prd.metallic *= metallicRoughness.b;
+            prd.roughness *= metallicRoughness.g;
+        }
+    }
+    else
+    {
+        prd.baseColor = vec3(1);
+        prd.emittance = vec3(0);
+        prd.metallic = 0;
+        prd.roughness = 1;
+    }
+
+    prd.worldNormal = worldNormal;
+    if(renderFlag(FLAG_ALBEDO_85))
+    {
+        prd.baseColor = vec3(0.85);
+    }
 }

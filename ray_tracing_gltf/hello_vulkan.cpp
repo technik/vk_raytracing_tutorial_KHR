@@ -202,6 +202,7 @@ void HelloVulkan::createDescriptorSetLayout()
   bind.addBinding(vkDS(B_VERTICES, vkDT::eStorageBuffer, 1, vkSS::eRaygenKHR | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
   bind.addBinding(vkDS(B_INDICES, vkDT::eStorageBuffer, 1, vkSS::eRaygenKHR | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
   bind.addBinding(vkDS(B_NORMALS, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR));
+  bind.addBinding(vkDS(B_TANGENTS, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR));
   bind.addBinding(vkDS(B_TEXCOORDS, vkDT::eStorageBuffer, 1, vkSS::eClosestHitKHR));
   bind.addBinding(vkDS(B_MATERIALS, vkDT::eStorageBuffer, 1, vkSS::eFragment | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
   bind.addBinding(vkDS(B_MATRICES, vkDT::eStorageBuffer, 1, vkSS::eVertex | vkSS::eRaygenKHR | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));
@@ -227,6 +228,7 @@ void HelloVulkan::updateDescriptorSet()
   vk::DescriptorBufferInfo vertexDesc{m_vertexBuffer.buffer, 0, VK_WHOLE_SIZE};
   vk::DescriptorBufferInfo indexDesc{m_indexBuffer.buffer, 0, VK_WHOLE_SIZE};
   vk::DescriptorBufferInfo normalDesc{m_normalBuffer.buffer, 0, VK_WHOLE_SIZE};
+  vk::DescriptorBufferInfo tangentDesc{m_tangentBuffer.buffer, 0, VK_WHOLE_SIZE};
   vk::DescriptorBufferInfo uvDesc{m_uvBuffer.buffer, 0, VK_WHOLE_SIZE};
   vk::DescriptorBufferInfo materialDesc{m_materialBuffer.buffer, 0, VK_WHOLE_SIZE};
   vk::DescriptorBufferInfo matrixDesc{ m_matrixBuffer.buffer, 0, VK_WHOLE_SIZE };
@@ -236,6 +238,7 @@ void HelloVulkan::updateDescriptorSet()
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_VERTICES, &vertexDesc));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_INDICES, &indexDesc));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_NORMALS, &normalDesc));
+  writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_TANGENTS, &tangentDesc));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_TEXCOORDS, &uvDesc));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_MATERIALS, &materialDesc));
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, B_MATRICES, &matrixDesc));
@@ -318,6 +321,75 @@ void HelloVulkan::buildLightTables(vk::CommandBuffer cmdBuf)
 		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
 }
 
+//----------------------------------------------------------------------------------------------
+std::vector<vec4f> generateTangentSpace(
+	const std::vector<vec3f>& positions,
+	const std::vector<vec3f>& normals,
+	const std::vector<vec2f>& uvs,
+	const std::vector<uint32_t>& indices,
+	size_t                       nIndices,
+	size_t                       nVertices,
+	size_t                       indexOffset,
+	size_t                       vertexOffset)
+{
+	// Prepare data
+	std::vector<vec4f> tangentVectors;
+	tangentVectors.resize(nVertices);
+	memset(tangentVectors.data(), 0, nVertices * sizeof(vec4f));  // Clear the tangents
+
+	// Accumulate per-triangle normals
+	auto indexEnd = nIndices + indexOffset;
+	for (int i = indexOffset; i < indexEnd; i += 3)  // Iterate over all triangles
+	{
+		auto i0 = indices[i + 0];
+		auto i1 = indices[i + 1];
+		auto i2 = indices[i + 2];
+
+		vec2f localUvs[3] = { uvs[i0 + vertexOffset], uvs[i1 + vertexOffset], uvs[i2 + vertexOffset] };
+		vec3f localPos[3] = { positions[i0 + vertexOffset], positions[i1 + vertexOffset],
+								positions[i2 + vertexOffset] };
+
+		vec2f deltaUV1 = localUvs[1] - localUvs[0];
+		vec2f deltaUV2 = localUvs[2] - localUvs[0];
+
+		vec3f deltaPos1 = localPos[1] - localPos[0];
+		vec3f deltaPos2 = localPos[2] - localPos[0];
+
+		auto determinant = deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y;
+		if (determinant == 0)
+			continue; // Skip degenerated triangles
+
+		// Unnormalized tangent
+		vec3f triangleTangent = (deltaPos1 * deltaUV2.y - deltaUV1.y * deltaPos2) * (1 / determinant);
+		//assert(abs(determinant) > 1e-4);
+
+		tangentVectors[i0] +=
+			vec4f(triangleTangent.x, triangleTangent.y, triangleTangent.z, determinant);
+		tangentVectors[i1] +=
+			vec4f(triangleTangent.x, triangleTangent.y, triangleTangent.z, determinant);
+		tangentVectors[i2] +=
+			vec4f(triangleTangent.x, triangleTangent.y, triangleTangent.z, determinant);
+
+		//assert(dot(tangentVectors[i0], tangentVectors[i0]) > 0.99f);
+		//assert(dot(tangentVectors[i1], tangentVectors[i1]) > 0.99f);
+		//assert(dot(tangentVectors[i2], tangentVectors[i2]) > 0.99f);
+	}
+
+	// Orthonormalize per vertex
+	for (int i = 0; i < tangentVectors.size(); ++i)
+	{
+		auto& tangent = tangentVectors[i];
+		vec3f tangent3 = { tangent.x, tangent.y, tangent.z };
+		auto& normal = normals[i];
+
+		tangent3 = tangent3 - (dot(tangent3, normal) * normal);  // Orthogonal tangent
+		tangent3 = normalize(tangent3);                          // Orthonormal tangent
+		tangent = { tangent3.x, tangent3.y, tangent3.z, signbit(-tangent.w) ? -1.f : 1.f };
+	}
+
+	return tangentVectors;
+}
+
 //--------------------------------------------------------------------------------------------------
 // Loading the OBJ file and setting up all buffers
 //
@@ -348,7 +420,7 @@ void HelloVulkan::loadScene(const std::string& filename)
 
   m_gltfScene.importMaterials(tmodel);
   m_gltfScene.importDrawableNodes(tmodel,
-                                  nvh::GltfAttributes::Normal | nvh::GltfAttributes::Texcoord_0);
+	  nvh::GltfAttributes::Normal | nvh::GltfAttributes::Texcoord_0 | nvh::GltfAttributes::Tangent);
 
   // Create the buffers on Device and copy vertices, indices and materials
   nvvk::CommandPool cmdBufGet(m_device, m_graphicsQueueIndex);
@@ -363,7 +435,24 @@ void HelloVulkan::loadScene(const std::string& filename)
                            vkBU::eIndexBuffer | vkBU::eStorageBuffer | vkBU::eShaderDeviceAddress
                                | vkBU::eAccelerationStructureBuildInputReadOnlyKHR);
   m_normalBuffer = m_alloc.createBuffer(cmdBuf, m_gltfScene.m_normals,
-                                        vkBU::eVertexBuffer | vkBU::eStorageBuffer);
+                                    vkBU::eVertexBuffer | vkBU::eStorageBuffer);
+  /*std::vector<vec4f> tangents;
+  if (m_gltfScene.m_tangents.size()
+	  != m_gltfScene.m_positions.size())  // No tangents provided. Generate them
+  {
+	  m_gltfScene.m_tangents.clear();
+	  for (const auto& primitive : m_gltfScene.m_primMeshes)
+	  {
+		  tangents = generateTangentSpace(m_gltfScene.m_positions, m_gltfScene.m_normals,
+			  m_gltfScene.m_texcoords0, m_gltfScene.m_indices,
+			  primitive.indexCount, primitive.vertexCount,
+			  primitive.firstIndex, primitive.vertexOffset);
+		  m_gltfScene.m_tangents.insert(m_gltfScene.m_tangents.end(), tangents.begin(), tangents.end());
+	  }
+  }*/
+
+  m_tangentBuffer = m_alloc.createBuffer(cmdBuf, m_gltfScene.m_tangents,
+									vkBU::eVertexBuffer | vkBU::eStorageBuffer);
   m_uvBuffer     = m_alloc.createBuffer(cmdBuf, m_gltfScene.m_texcoords0,
                                     vkBU::eVertexBuffer | vkBU::eStorageBuffer);
 
@@ -373,8 +462,16 @@ void HelloVulkan::loadScene(const std::string& filename)
   std::vector<GltfShadeMaterial> shadeMaterials;
   for(auto& m : m_gltfScene.m_materials)
   {
-    shadeMaterials.emplace_back(
-        GltfShadeMaterial{m.pbrBaseColorFactor, m.pbrBaseColorTexture, m.emissiveFactor, m.emissiveTexture });
+	  shadeMaterials.emplace_back(
+		  GltfShadeMaterial{
+			m.pbrBaseColorFactor,
+			m.pbrBaseColorTexture,
+			m.emissiveFactor,
+			m.emissiveTexture,
+			m.normalTexture,
+			m.pbrMetallicRoughnessTexture,
+			m.pbrRoughnessFactor,
+			m.pbrMetallicFactor });
   }
   m_materialBuffer = m_alloc.createBuffer(cmdBuf, shadeMaterials, vkBU::eStorageBuffer);
 
@@ -404,6 +501,7 @@ void HelloVulkan::loadScene(const std::string& filename)
   m_debug.setObjectName(m_vertexBuffer.buffer, "Vertex");
   m_debug.setObjectName(m_indexBuffer.buffer, "Index");
   m_debug.setObjectName(m_normalBuffer.buffer, "Normal");
+  m_debug.setObjectName(m_tangentBuffer.buffer, "Tangent");
   m_debug.setObjectName(m_uvBuffer.buffer, "TexCoord");
   m_debug.setObjectName(m_materialBuffer.buffer, "Material");
   m_debug.setObjectName(m_matrixBuffer.buffer, "Matrix");
@@ -501,6 +599,7 @@ void HelloVulkan::destroyResources()
 
   m_alloc.destroy(m_vertexBuffer);
   m_alloc.destroy(m_normalBuffer);
+  m_alloc.destroy(m_tangentBuffer);
   m_alloc.destroy(m_uvBuffer);
   m_alloc.destroy(m_indexBuffer);
   m_alloc.destroy(m_materialBuffer);

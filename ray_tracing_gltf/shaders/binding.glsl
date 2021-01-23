@@ -9,3 +9,4 @@
 #define B_MATRICES 6
 #define B_TEXTURES 7
 #define B_LIGHT_INST 8
+#define B_TANGENTS 9

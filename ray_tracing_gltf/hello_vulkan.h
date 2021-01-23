@@ -79,6 +79,7 @@ public:
   nvh::GltfScene m_gltfScene;
   nvvk::Buffer   m_vertexBuffer;
   nvvk::Buffer   m_normalBuffer;
+  nvvk::Buffer   m_tangentBuffer;
   nvvk::Buffer   m_uvBuffer;
   nvvk::Buffer   m_indexBuffer;
   nvvk::Buffer   m_materialBuffer;
