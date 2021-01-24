@@ -878,33 +878,42 @@ void HelloVulkan::onResize(int /*w*/, int /*h*/)
 // Post-processing
 //////////////////////////////////////////////////////////////////////////
 
+void HelloVulkan::createBufferImage(vk::CommandBuffer cmdBuf, nvvk::Texture& dstImage, vk::Format format)
+{
+	m_alloc.destroy(dstImage);
+	auto colorCreateInfo = nvvk::makeImage2DCreateInfo(m_size, format,
+		vk::ImageUsageFlagBits::eColorAttachment
+		| vk::ImageUsageFlagBits::eSampled
+		| vk::ImageUsageFlagBits::eStorage);
+
+	nvvk::Image             image = m_alloc.createImage(colorCreateInfo);
+	vk::ImageViewCreateInfo ivInfo = nvvk::makeImageViewCreateInfo(image.image, colorCreateInfo);
+	dstImage = m_alloc.createTexture(image, ivInfo, vk::SamplerCreateInfo());
+	dstImage.descriptor.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+	nvvk::cmdBarrierImageLayout(cmdBuf,
+		dstImage.image,
+		vk::ImageLayout::eUndefined,
+		vk::ImageLayout::eGeneral);
+}
+
 //--------------------------------------------------------------------------------------------------
 // Creating an offscreen frame buffer and the associated render pass
 //
 void HelloVulkan::createOffscreenRender()
 {
-  m_alloc.destroy(m_offscreenColor);
-  m_alloc.destroy(m_offscreenDepth);
 
+  nvvk::CommandPool genCmdBuf(m_device, m_graphicsQueueIndex);
+  auto              cmdBuf = genCmdBuf.createCommandBuffer();
   // Creating the color image
-  {
-    auto colorCreateInfo = nvvk::makeImage2DCreateInfo(m_size, m_offscreenColorFormat,
-                                                       vk::ImageUsageFlagBits::eColorAttachment
-                                                           | vk::ImageUsageFlagBits::eSampled
-                                                           | vk::ImageUsageFlagBits::eStorage);
-
-
-    nvvk::Image             image  = m_alloc.createImage(colorCreateInfo);
-    vk::ImageViewCreateInfo ivInfo = nvvk::makeImageViewCreateInfo(image.image, colorCreateInfo);
-    m_offscreenColor               = m_alloc.createTexture(image, ivInfo, vk::SamplerCreateInfo());
-    m_offscreenColor.descriptor.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-  }
+  createBufferImage(cmdBuf, m_offscreenColor, m_offscreenColorFormat);
 
   // Creating the depth buffer
   auto depthCreateInfo =
       nvvk::makeImage2DCreateInfo(m_size, m_offscreenDepthFormat,
                                   vk::ImageUsageFlagBits::eDepthStencilAttachment);
   {
+	  m_alloc.destroy(m_offscreenDepth);
     nvvk::Image image = m_alloc.createImage(depthCreateInfo);
 
     vk::ImageViewCreateInfo depthStencilView;
@@ -914,20 +923,15 @@ void HelloVulkan::createOffscreenRender()
     depthStencilView.setImage(image.image);
 
     m_offscreenDepth = m_alloc.createTexture(image, depthStencilView);
-  }
 
-  // Setting the image layout for both color and depth
-  {
-    nvvk::CommandPool genCmdBuf(m_device, m_graphicsQueueIndex);
-    auto              cmdBuf = genCmdBuf.createCommandBuffer();
-    nvvk::cmdBarrierImageLayout(cmdBuf, m_offscreenColor.image, vk::ImageLayout::eUndefined,
-                                vk::ImageLayout::eGeneral);
+    // Setting the image layout for depth
     nvvk::cmdBarrierImageLayout(cmdBuf, m_offscreenDepth.image, vk::ImageLayout::eUndefined,
                                 vk::ImageLayout::eDepthStencilAttachmentOptimal,
                                 vk::ImageAspectFlagBits::eDepth);
 
-    genCmdBuf.submitAndWait(cmdBuf);
   }
+
+  genCmdBuf.submitAndWait(cmdBuf);
 
   // Creating a renderpass for the offscreen
   if(!m_offscreenRenderPass)
@@ -950,6 +954,53 @@ void HelloVulkan::createOffscreenRender()
   info.setHeight(m_size.height);
   info.setLayers(1);
   m_offscreenFramebuffer = m_device.createFramebuffer(info);
+}
+
+//--------------------------------------------------------------------------------------------------
+// Creating an offscreen frame buffer and the associated render pass
+//
+void HelloVulkan::createGBufferRender()
+{
+	nvvk::CommandPool genCmdBuf(m_device, m_graphicsQueueIndex);
+	auto              cmdBuf = genCmdBuf.createCommandBuffer();
+
+	// Creating the color image
+	createBufferImage(cmdBuf, m_normalsRT, m_normalsBufferFormat);
+	createBufferImage(cmdBuf, m_pbrRT, m_pbrBufferFormat);
+	createBufferImage(cmdBuf, m_emissiveRT, m_emissiveFormat);
+
+	genCmdBuf.submitAndWait(cmdBuf);
+	
+	// Creating a renderpass for the offscreen
+	if (!m_gBufferRenderPass)
+	{
+		m_gBufferRenderPass = nvvk::createRenderPass(m_device,
+			{ m_normalsBufferFormat, m_pbrBufferFormat, m_emissiveFormat },
+			m_offscreenDepthFormat,
+			1, // Subpass count
+			true, // Clear color
+			true, // Clear depth
+			vk::ImageLayout::eGeneral, vk::ImageLayout::eGeneral);
+	}
+
+	// Creating the frame buffer for offscreen
+	std::vector<vk::ImageView> attachments = {
+		// Color
+		m_normalsRT.descriptor.imageView,
+		m_pbrRT.descriptor.imageView,
+		m_emissiveRT.descriptor.imageView,
+		// Depth
+		m_offscreenDepth.descriptor.imageView };
+
+	m_device.destroy(m_gBufferFramebuffer);
+	vk::FramebufferCreateInfo info;
+	info.setRenderPass(m_gBufferRenderPass);
+	info.setAttachmentCount(attachments.size());
+	info.setPAttachments(attachments.data());
+	info.setWidth(m_size.width);
+	info.setHeight(m_size.height);
+	info.setLayers(1);
+	m_gBufferFramebuffer = m_device.createFramebuffer(info);
 }
 
 //--------------------------------------------------------------------------------------------------

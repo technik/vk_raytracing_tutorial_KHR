@@ -174,6 +174,7 @@ int main(int argc, char** argv)
 
 
   helloVk.createOffscreenRender();
+  helloVk.createGBufferRender();
   helloVk.createDescriptorSetLayout();
   helloVk.createGraphicsPipeline();
   helloVk.createUniformBuffer();

@@ -64,6 +64,7 @@ public:
   void onResize(int /*w*/, int /*h*/) override;
   void destroyResources();
   void rasterize(const vk::CommandBuffer& cmdBuff);
+  void createBufferImage(vk::CommandBuffer cmdBuf, nvvk::Texture& image, vk::Format format);
 
   // Structure used for retrieving the primitive information in the closest hit
   // The gl_InstanceCustomIndexNV
@@ -127,9 +128,20 @@ public:
   vk::RenderPass              m_offscreenRenderPass;
   vk::Framebuffer             m_offscreenFramebuffer;
   nvvk::Texture               m_offscreenColor;
-  vk::Format                  m_offscreenColorFormat{vk::Format::eR32G32B32A32Sfloat};
+  vk::Format                  m_offscreenColorFormat{vk::Format::eR16G16B16A16Sfloat};
   nvvk::Texture               m_offscreenDepth;
   vk::Format                  m_offscreenDepthFormat{vk::Format::eD32Sfloat};
+
+  // G-Buffer pass
+  void createGBufferRender();
+  vk::Format                m_normalsBufferFormat{ vk::Format::eR16G16B16A16Sfloat };
+  vk::Format				m_pbrBufferFormat{ vk::Format::eR8G8B8A8Unorm };
+  vk::Format				m_emissiveFormat{ vk::Format::eR16G16B16A16Sfloat };
+  nvvk::Texture               m_normalsRT;
+  nvvk::Texture               m_pbrRT;
+  nvvk::Texture               m_emissiveRT;
+  vk::RenderPass              m_gBufferRenderPass;
+  vk::Framebuffer             m_gBufferFramebuffer;
 
   // #VKRay
   nvvk::RaytracingBuilderKHR::BlasInput primitiveToGeometry(const nvh::GltfPrimMesh& prim);
