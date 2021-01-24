@@ -335,26 +335,11 @@ void HelloVulkan::createGBufferPipeline()
 	pipelineLayoutCreateInfo.setPPushConstantRanges(&pushConstantRanges);
 	m_gBufferPipelineLayout = m_device.createPipelineLayout(pipelineLayoutCreateInfo);
 
-	// Creating the Pipeline
-	std::vector<std::string>                paths = defaultSearchPaths;
-	nvvk::GraphicsPipelineGeneratorCombined gpb(m_device, m_gBufferPipelineLayout, m_gBufferRenderPass);
-	gpb.depthStencilState.depthTestEnable = true;
-	gpb.addShader(nvh::loadFile("shaders/gbuffer.vert.spv", true, paths, true), vkSS::eVertex);
-	gpb.addShader(nvh::loadFile("shaders/gbuffer.frag.spv", true, paths, true), vkSS::eFragment);
-	gpb.addBindingDescriptions({
-		{0, sizeof(nvmath::vec3)}, // Position
-		{1, sizeof(nvmath::vec3)}, // Normal
-		{2, sizeof(nvmath::vec3)}, // Tangent
-		{3, sizeof(nvmath::vec2)}  // Texcoord0
-		});
-	gpb.addAttributeDescriptions({
-		{0, 0, vk::Format::eR32G32B32Sfloat, 0},	// Position
-		{1, 1, vk::Format::eR32G32B32Sfloat, 0},	// Normal
-		{2, 2, vk::Format::eR32G32B32A32Sfloat, 0},	// Tangent
-		{3, 3, vk::Format::eR32G32Sfloat, 0},		// Texcoord0
-		});
-	m_gBufferPipeline = gpb.createPipeline();
-	m_debug.setObjectName(m_gBufferPipeline, "G-Buffer pipeline");
+	m_gBufferPipeline = std::make_unique<RasterPipeline>(m_device, m_debug,
+		m_gBufferPipelineLayout, m_gBufferRenderPass,
+		"shaders/gbuffer.vert.spv",
+		"shaders/gbuffer.frag.spv",
+		"G-Buffer pipeline");
 }
 
 
@@ -910,7 +895,7 @@ void HelloVulkan::rasterizeGBuffer(const vk::CommandBuffer& cmdBuf)
 	using vkPBP = vk::PipelineBindPoint;
 	using vkSS = vk::ShaderStageFlagBits;
 
-	std::vector<vk::DeviceSize> offsets = { 0, 0, 0 };
+	std::vector<vk::DeviceSize> offsets = { 0, 0, 0, 0 };
 
 	m_debug.beginLabel(cmdBuf, "Rasterize GBuffer");
 
@@ -919,7 +904,7 @@ void HelloVulkan::rasterizeGBuffer(const vk::CommandBuffer& cmdBuf)
 	cmdBuf.setScissor(0, { {{0, 0}, {m_size.width, m_size.height}} });
 
 	// Drawing all triangles
-	cmdBuf.bindPipeline(vkPBP::eGraphics, m_gBufferPipeline);
+	cmdBuf.bindPipeline(vkPBP::eGraphics, m_gBufferPipeline->get());
 	cmdBuf.bindDescriptorSets(vkPBP::eGraphics, m_gBufferPipelineLayout, 0, { m_descSet }, {});
 	std::vector<vk::Buffer> vertexBuffers = {
 		m_vertexBuffer.buffer,

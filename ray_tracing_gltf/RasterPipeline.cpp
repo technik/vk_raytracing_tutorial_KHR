@@ -64,6 +64,15 @@ bool RasterPipeline::tryLoadPipeline()
 	// Creating the Pipeline
 	std::vector<std::string>                paths = defaultSearchPaths;
 	nvvk::GraphicsPipelineGeneratorCombined gpb(m_device, m_pipelineLayout, m_renderPass);
+	gpb.setBlendAttachmentCount(3);
+	vk::PipelineColorBlendAttachmentState blendState;
+	blendState.blendEnable = false;
+	blendState.colorWriteMask =
+		vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+		vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
+	gpb.setBlendAttachmentState(0, blendState);
+	gpb.setBlendAttachmentState(1, blendState);
+	gpb.setBlendAttachmentState(2, blendState);
 	gpb.depthStencilState.depthTestEnable = true;
 	gpb.addShader(nvh::loadFile(m_vtxShader, true, paths, true), vkSS::eVertex);
 	gpb.addShader(nvh::loadFile(m_fragShader, true, paths, true), vkSS::eFragment);
@@ -86,7 +95,9 @@ bool RasterPipeline::tryLoadPipeline()
 		m_device.destroyPipeline(m_vkPipeline);
 		m_vkPipeline = newPipeline;
 		m_debug.setObjectName(m_vkPipeline, m_debugName);
+		return true;
 	}
+	return false;
 }
 
 void RasterPipeline::tryReload()

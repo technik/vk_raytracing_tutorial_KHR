@@ -174,7 +174,6 @@ int main(int argc, char** argv)
 
 
   helloVk.createOffscreenRender();
-  helloVk.createGBufferRender();
   helloVk.createDescriptorSetLayout();
   helloVk.createGraphicsPipeline();
   helloVk.createUniformBuffer();
@@ -190,6 +189,10 @@ int main(int argc, char** argv)
   helloVk.createPostDescriptor();
   helloVk.createPostPipeline();
   helloVk.updatePostDescriptorSet();
+
+  // Init gBuffer pass
+  helloVk.createGBufferRender();
+  helloVk.createGBufferPipeline();
 
 
   nvmath::vec4f clearColor   = nvmath::vec4f(1, 1, 1, 1.00f);
@@ -252,50 +255,74 @@ int main(int argc, char** argv)
     // Updating camera buffer
     helloVk.updateUniformBuffer(cmdBuf);
 
-    // Clearing screen
-    vk::ClearValue clearValues[2];
-    clearValues[0].setColor(
-        std::array<float, 4>({clearColor[0], clearColor[1], clearColor[2], clearColor[3]}));
-    clearValues[1].setDepthStencil({1.0f, 0});
 
-    // Offscreen render pass
+    // ----- Offscreen render pass -----
+    // Rendering Scene
+    if(useRaytracer)
     {
-      vk::RenderPassBeginInfo offscreenRenderPassBeginInfo;
-      offscreenRenderPassBeginInfo.setClearValueCount(2);
-      offscreenRenderPassBeginInfo.setPClearValues(clearValues);
-      offscreenRenderPassBeginInfo.setRenderPass(helloVk.m_offscreenRenderPass);
-      offscreenRenderPassBeginInfo.setFramebuffer(helloVk.m_offscreenFramebuffer);
-      offscreenRenderPassBeginInfo.setRenderArea({{}, helloVk.getSize()});
+		// Raster g-buffer
+		// Clearing screen
+		vk::ClearValue clearValues[4];
+		clearValues[0].setColor(std::array<float, 4>({ 0.f, 0.f, 0.f, 0.f })); // Normals
+		clearValues[1].setColor(std::array<float, 4>({ 0.f, 0.f, 0.f, 0.f })); // PBR
+		clearValues[2].setColor(
+			std::array<float, 4>({ clearColor[0], clearColor[1], clearColor[2], clearColor[3] })); // Emissive
+		clearValues[3].setDepthStencil({ 1.0f, 0 }); // Depth
 
-      // Rendering Scene
-      if(useRaytracer)
-      {
-        helloVk.raytrace(cmdBuf, clearColor);
-      }
-      else
-      {
-        cmdBuf.beginRenderPass(offscreenRenderPassBeginInfo, vk::SubpassContents::eInline);
-        helloVk.rasterize(cmdBuf);
-        cmdBuf.endRenderPass();
-      }
+		vk::RenderPassBeginInfo offscreenRenderPassBeginInfo;
+		offscreenRenderPassBeginInfo.setClearValueCount(4);
+		offscreenRenderPassBeginInfo.setPClearValues(clearValues);
+		offscreenRenderPassBeginInfo.setRenderPass(helloVk.m_gBufferRenderPass);
+		offscreenRenderPassBeginInfo.setFramebuffer(helloVk.m_gBufferFramebuffer);
+		offscreenRenderPassBeginInfo.setRenderArea({ {}, helloVk.getSize() });
+
+		cmdBuf.beginRenderPass(offscreenRenderPassBeginInfo, vk::SubpassContents::eInline);
+		helloVk.rasterizeGBuffer(cmdBuf);
+		cmdBuf.endRenderPass();
+		// Direct light rays
+		helloVk.raytrace(cmdBuf, clearColor);
+	}
+	else // Raster scene
+	{
+		// Clearing screen
+		vk::ClearValue clearValues[2];
+		clearValues[0].setColor(
+			std::array<float, 4>({ clearColor[0], clearColor[1], clearColor[2], clearColor[3] }));
+		clearValues[1].setDepthStencil({ 1.0f, 0 });
+
+		vk::RenderPassBeginInfo offscreenRenderPassBeginInfo;
+		offscreenRenderPassBeginInfo.setClearValueCount(2);
+		offscreenRenderPassBeginInfo.setPClearValues(clearValues);
+		offscreenRenderPassBeginInfo.setRenderPass(helloVk.m_offscreenRenderPass);
+		offscreenRenderPassBeginInfo.setFramebuffer(helloVk.m_offscreenFramebuffer);
+		offscreenRenderPassBeginInfo.setRenderArea({ {}, helloVk.getSize() });
+
+		cmdBuf.beginRenderPass(offscreenRenderPassBeginInfo, vk::SubpassContents::eInline);
+		helloVk.rasterize(cmdBuf);
+		cmdBuf.endRenderPass();
     }
 
     // 2nd rendering pass: tone mapper, UI
     {
-      vk::RenderPassBeginInfo postRenderPassBeginInfo;
-      postRenderPassBeginInfo.setClearValueCount(2);
-      postRenderPassBeginInfo.setPClearValues(clearValues);
-      postRenderPassBeginInfo.setRenderPass(helloVk.getRenderPass());
-      postRenderPassBeginInfo.setFramebuffer(helloVk.getFramebuffers()[curFrame]);
-      postRenderPassBeginInfo.setRenderArea({{}, helloVk.getSize()});
+		vk::ClearValue clearValues[2];
+		clearValues[0].setColor(
+			std::array<float, 4>({ clearColor[0], clearColor[1], clearColor[2], clearColor[3] }));
+		clearValues[1].setDepthStencil({ 1.0f, 0 });
 
-      cmdBuf.beginRenderPass(postRenderPassBeginInfo, vk::SubpassContents::eInline);
-      // Rendering tonemapper
-      helloVk.drawPost(cmdBuf);
-      // Rendering UI
-      ImGui::Render();
-      ImGui::RenderDrawDataVK(cmdBuf, ImGui::GetDrawData());
-      cmdBuf.endRenderPass();
+		vk::RenderPassBeginInfo postRenderPassBeginInfo;
+		postRenderPassBeginInfo.setClearValueCount(2);
+		postRenderPassBeginInfo.setPClearValues(clearValues);
+		postRenderPassBeginInfo.setRenderPass(helloVk.getRenderPass());
+		postRenderPassBeginInfo.setFramebuffer(helloVk.getFramebuffers()[curFrame]);
+		postRenderPassBeginInfo.setRenderArea({{}, helloVk.getSize()});
+
+		cmdBuf.beginRenderPass(postRenderPassBeginInfo, vk::SubpassContents::eInline);
+		// Rendering tonemapper
+		helloVk.drawPost(cmdBuf);
+		// Rendering UI
+		ImGui::Render();
+		ImGui::RenderDrawDataVK(cmdBuf, ImGui::GetDrawData());
+		cmdBuf.endRenderPass();
     }
 
     // Submit for display
