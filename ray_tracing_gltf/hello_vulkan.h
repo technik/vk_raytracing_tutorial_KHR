@@ -134,14 +134,18 @@ public:
 
   // G-Buffer pass
   void createGBufferRender();
+  void createGBufferPipeline();
+  void rasterizeGBuffer(const vk::CommandBuffer& cmdBuf);
   vk::Format                m_normalsBufferFormat{ vk::Format::eR16G16B16A16Sfloat };
   vk::Format				m_pbrBufferFormat{ vk::Format::eR8G8B8A8Unorm };
   vk::Format				m_emissiveFormat{ vk::Format::eR16G16B16A16Sfloat };
-  nvvk::Texture               m_normalsRT;
-  nvvk::Texture               m_pbrRT;
-  nvvk::Texture               m_emissiveRT;
-  vk::RenderPass              m_gBufferRenderPass;
-  vk::Framebuffer             m_gBufferFramebuffer;
+  nvvk::Texture				m_normalsRT;
+  nvvk::Texture				m_pbrRT;
+  nvvk::Texture				m_emissiveRT;
+  vk::RenderPass			m_gBufferRenderPass;
+  vk::Framebuffer			m_gBufferFramebuffer;
+  vk::PipelineLayout		m_gBufferPipelineLayout;
+  vk::Pipeline				m_gBufferPipeline;
 
   // #VKRay
   nvvk::RaytracingBuilderKHR::BlasInput primitiveToGeometry(const nvh::GltfPrimMesh& prim);

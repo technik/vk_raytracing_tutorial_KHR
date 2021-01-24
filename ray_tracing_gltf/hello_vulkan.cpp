@@ -316,6 +316,47 @@ void HelloVulkan::createGraphicsPipeline()
   m_debug.setObjectName(m_graphicsPipeline, "Graphics");
 }
 
+//--------------------------------------------------------------------------------------------------
+// Creating the G-Buffer pipeline and pipeline layout
+//
+void HelloVulkan::createGBufferPipeline()
+{
+	using vkSS = vk::ShaderStageFlagBits;
+
+	vk::PushConstantRange pushConstantRanges = { vkSS::eVertex | vkSS::eFragment, 0,
+												sizeof(ObjPushConstant) };
+
+	// Creating the Pipeline Layout
+	vk::PipelineLayoutCreateInfo pipelineLayoutCreateInfo;
+	vk::DescriptorSetLayout      descSetLayout(m_descSetLayout);
+	pipelineLayoutCreateInfo.setSetLayoutCount(1);
+	pipelineLayoutCreateInfo.setPSetLayouts(&descSetLayout);
+	pipelineLayoutCreateInfo.setPushConstantRangeCount(1);
+	pipelineLayoutCreateInfo.setPPushConstantRanges(&pushConstantRanges);
+	m_gBufferPipelineLayout = m_device.createPipelineLayout(pipelineLayoutCreateInfo);
+
+	// Creating the Pipeline
+	std::vector<std::string>                paths = defaultSearchPaths;
+	nvvk::GraphicsPipelineGeneratorCombined gpb(m_device, m_gBufferPipelineLayout, m_gBufferRenderPass);
+	gpb.depthStencilState.depthTestEnable = true;
+	gpb.addShader(nvh::loadFile("shaders/gbuffer.vert.spv", true, paths, true), vkSS::eVertex);
+	gpb.addShader(nvh::loadFile("shaders/gbuffer.frag.spv", true, paths, true), vkSS::eFragment);
+	gpb.addBindingDescriptions({
+		{0, sizeof(nvmath::vec3)}, // Position
+		{1, sizeof(nvmath::vec3)}, // Normal
+		{2, sizeof(nvmath::vec3)}, // Tangent
+		{3, sizeof(nvmath::vec2)}  // Texcoord0
+		});
+	gpb.addAttributeDescriptions({
+		{0, 0, vk::Format::eR32G32B32Sfloat, 0},	// Position
+		{1, 1, vk::Format::eR32G32B32Sfloat, 0},	// Normal
+		{2, 2, vk::Format::eR32G32B32A32Sfloat, 0},	// Tangent
+		{3, 3, vk::Format::eR32G32Sfloat, 0},		// Texcoord0
+		});
+	m_gBufferPipeline = gpb.createPipeline();
+	m_debug.setObjectName(m_gBufferPipeline, "G-Buffer pipeline");
+}
+
 
 bool isBinaryFile(const std::string& path)
 {
@@ -861,6 +902,48 @@ void HelloVulkan::rasterize(const vk::CommandBuffer& cmdBuf)
   }
 
   m_debug.endLabel(cmdBuf);
+}
+
+//
+void HelloVulkan::rasterizeGBuffer(const vk::CommandBuffer& cmdBuf)
+{
+	using vkPBP = vk::PipelineBindPoint;
+	using vkSS = vk::ShaderStageFlagBits;
+
+	std::vector<vk::DeviceSize> offsets = { 0, 0, 0 };
+
+	m_debug.beginLabel(cmdBuf, "Rasterize GBuffer");
+
+	// Dynamic Viewport
+	cmdBuf.setViewport(0, { vk::Viewport(0, 0, (float)m_size.width, (float)m_size.height, 0, 1) });
+	cmdBuf.setScissor(0, { {{0, 0}, {m_size.width, m_size.height}} });
+
+	// Drawing all triangles
+	cmdBuf.bindPipeline(vkPBP::eGraphics, m_gBufferPipeline);
+	cmdBuf.bindDescriptorSets(vkPBP::eGraphics, m_gBufferPipelineLayout, 0, { m_descSet }, {});
+	std::vector<vk::Buffer> vertexBuffers = {
+		m_vertexBuffer.buffer,
+		m_normalBuffer.buffer,
+		m_tangentBuffer.buffer,
+		m_uvBuffer.buffer };
+	cmdBuf.bindVertexBuffers(0, static_cast<uint32_t>(vertexBuffers.size()), vertexBuffers.data(),
+		offsets.data());
+	cmdBuf.bindIndexBuffer(m_indexBuffer.buffer, 0, vk::IndexType::eUint32);
+
+	uint32_t idxNode = 0;
+	for (auto& node : m_gltfScene.m_nodes)
+	{
+		auto& primitive = m_gltfScene.m_primMeshes[node.primMesh];
+
+		m_pushConstant.instanceId = idxNode++;
+		m_pushConstant.materialId = primitive.materialIndex;
+		cmdBuf.pushConstants<ObjPushConstant>(
+			m_gBufferPipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0,
+			m_pushConstant);
+		cmdBuf.drawIndexed(primitive.indexCount, 1, primitive.firstIndex, primitive.vertexOffset, 0);
+	}
+
+	m_debug.endLabel(cmdBuf);
 }
 
 //--------------------------------------------------------------------------------------------------
