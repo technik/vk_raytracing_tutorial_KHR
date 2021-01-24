@@ -179,6 +179,9 @@ public:
 		int firstBounce{ 0 };
 		int numLightInstances{ 0 };
 		uint numEmissiveTris{ 0 };
+		int numPathsPerPixel{ 1 };
+		int numGeomSamplesM{ 1 };
+		int numTrianglesM{ 1 };
 	} m_rtPushConstants;
 
 	struct SamplingAlias

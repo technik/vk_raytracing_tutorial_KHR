@@ -39,6 +39,9 @@ layout(push_constant) uniform Constants
     int firstBounce;
     int numLightInstances;
     uint numEmissiveTriangles;
+    int numPathsPerPixel;
+    int numGeomSamplesM;
+    int numTrianglesM;
 }
 pushC;
 
@@ -184,7 +187,7 @@ void main()
 
         // Metallic & Roughness
         prd.metallic = mat.metallic;
-        prd.roughness = mat.roughness;
+        prd.roughness = mat.roughness*1;
         if(mat.pbrMetallicRoughnessTexture > -1)
         {
             uint txtId = mat.pbrMetallicRoughnessTexture;

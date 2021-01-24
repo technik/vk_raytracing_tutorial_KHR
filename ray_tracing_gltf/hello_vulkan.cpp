@@ -87,6 +87,10 @@ void HelloVulkan::renderUI()
 	{
 		mustClean |= ImGui::InputInt("Max bounces", &m_rtPushConstants.maxBounces, 1);
 		mustClean |= ImGui::InputInt("First bounce", &m_rtPushConstants.firstBounce, 1);
+		mustClean |= ImGui::InputInt("N paths/pixel", &m_rtPushConstants.numPathsPerPixel, 1);
+		m_rtPushConstants.numPathsPerPixel = std::max(1, m_rtPushConstants.numPathsPerPixel);
+		mustClean |= ImGui::InputInt("M geometry", &m_rtPushConstants.numGeomSamplesM, 1);
+		mustClean |= ImGui::InputInt("M triangles", &m_rtPushConstants.numTrianglesM, 1);
 		m_rtPushConstants.maxBounces = std::min(20, std::max(0, m_rtPushConstants.maxBounces));
 		m_rtPushConstants.firstBounce = std::min(20, std::max(0, m_rtPushConstants.firstBounce));
 		// Render flags
