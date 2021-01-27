@@ -953,6 +953,9 @@ void HelloVulkan::createBufferImage(vk::CommandBuffer cmdBuf, nvvk::Texture& dst
 		vk::ImageUsageFlagBits::eColorAttachment
 		| vk::ImageUsageFlagBits::eSampled
 		| vk::ImageUsageFlagBits::eStorage);
+	colorCreateInfo.setMipLevels(1);
+	colorCreateInfo.setArrayLayers(1);
+	colorCreateInfo.setSamples(vk::SampleCountFlagBits::e1);
 
 	nvvk::Image             image = m_alloc.createImage(colorCreateInfo);
 	vk::ImageViewCreateInfo ivInfo = nvvk::makeImageViewCreateInfo(image.image, colorCreateInfo);
@@ -1033,6 +1036,7 @@ void HelloVulkan::createGBufferRender()
 	auto              cmdBuf = genCmdBuf.createCommandBuffer();
 
 	// Creating the color image
+	createBufferImage(cmdBuf, m_baseColorRT, m_basColorFormat);
 	createBufferImage(cmdBuf, m_normalsRT, m_normalsBufferFormat);
 	createBufferImage(cmdBuf, m_pbrRT, m_pbrBufferFormat);
 	createBufferImage(cmdBuf, m_emissiveRT, m_emissiveFormat);
@@ -1043,7 +1047,7 @@ void HelloVulkan::createGBufferRender()
 	if (!m_gBufferRenderPass)
 	{
 		m_gBufferRenderPass = nvvk::createRenderPass(m_device,
-			{ m_normalsBufferFormat, m_pbrBufferFormat, m_emissiveFormat },
+			{ m_basColorFormat, m_normalsBufferFormat, m_pbrBufferFormat, m_emissiveFormat },
 			m_offscreenDepthFormat,
 			1, // Subpass count
 			true, // Clear color
@@ -1054,6 +1058,7 @@ void HelloVulkan::createGBufferRender()
 	// Creating the frame buffer for offscreen
 	std::vector<vk::ImageView> attachments = {
 		// Color
+		m_baseColorRT.descriptor.imageView,
 		m_normalsRT.descriptor.imageView,
 		m_pbrRT.descriptor.imageView,
 		m_emissiveRT.descriptor.imageView,
@@ -1294,7 +1299,7 @@ void HelloVulkan::updateRtDescriptorSet()
 void HelloVulkan::createRtPipeline()
 {
 	std::vector<std::string> rayGenShaders = { "shaders/pathtrace.rgen.spv" };
-	std::vector<std::string> missShaders = { "shaders/pathtrace.rmiss.spv", "shaders/raytraceShadow.rmiss.spv" };
+	std::vector<std::string> missShaders = { "shaders/pathtrace.rmiss.spv" };
 	std::vector<std::string> chitShaders = { "shaders/pathtrace.rchit.spv" };
 	std::vector<std::string> anyHitShaders;// = { "shaders/pathtrace.rahit.spv" };
 

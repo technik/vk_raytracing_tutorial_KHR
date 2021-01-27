@@ -1,3 +1,5 @@
+#ifndef GLTF_GLSL
+#define GLTF_GLSL
 
 struct GltfShadeMaterial
 {
@@ -66,3 +68,5 @@ vec3 computeSpecular(GltfShadeMaterial mat, vec3 viewDir, vec3 lightDir, vec3 no
   return vec3(specular);
 }
 #endif
+
+#endif // GLTF_GLSL

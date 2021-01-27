@@ -6,7 +6,6 @@ struct hitPayload
   	vec3 emittance;
   	float roughness;
   	float metallic;
-  	uint seed;
 };
 
 #define FLAG_JITTER_AA	1

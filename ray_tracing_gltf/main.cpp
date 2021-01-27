@@ -262,23 +262,24 @@ int main(int argc, char** argv)
     {
 		// Raster g-buffer
 		// Clearing screen
-		vk::ClearValue clearValues[4];
-		clearValues[0].setColor(std::array<float, 4>({ 0.f, 0.f, 0.f, 0.f })); // Normals
-		clearValues[1].setColor(std::array<float, 4>({ 0.f, 0.f, 0.f, 0.f })); // PBR
-		clearValues[2].setColor(
+		vk::ClearValue clearValues[5];
+		clearValues[0].setColor(std::array<float, 4>({ 0.f, 0.f, 0.f, 0.f })); // BaseColor
+		clearValues[1].setColor(std::array<float, 4>({ 0.f, 0.f, 0.f, 0.f })); // Normals
+		clearValues[2].setColor(std::array<float, 4>({ 0.f, 0.f, 0.f, 0.f })); // PBR
+		clearValues[3].setColor(
 			std::array<float, 4>({ clearColor[0], clearColor[1], clearColor[2], clearColor[3] })); // Emissive
-		clearValues[3].setDepthStencil({ 1.0f, 0 }); // Depth
+		clearValues[4].setDepthStencil({ 1.0f, 0 }); // Depth
 
 		vk::RenderPassBeginInfo offscreenRenderPassBeginInfo;
-		offscreenRenderPassBeginInfo.setClearValueCount(4);
+		offscreenRenderPassBeginInfo.setClearValueCount(5);
 		offscreenRenderPassBeginInfo.setPClearValues(clearValues);
 		offscreenRenderPassBeginInfo.setRenderPass(helloVk.m_gBufferRenderPass);
 		offscreenRenderPassBeginInfo.setFramebuffer(helloVk.m_gBufferFramebuffer);
 		offscreenRenderPassBeginInfo.setRenderArea({ {}, helloVk.getSize() });
 
-		cmdBuf.beginRenderPass(offscreenRenderPassBeginInfo, vk::SubpassContents::eInline);
-		helloVk.rasterizeGBuffer(cmdBuf);
-		cmdBuf.endRenderPass();
+		//cmdBuf.beginRenderPass(offscreenRenderPassBeginInfo, vk::SubpassContents::eInline);
+		//helloVk.rasterizeGBuffer(cmdBuf);
+		//cmdBuf.endRenderPass();
 		// Direct light rays
 		helloVk.raytrace(cmdBuf, clearColor);
 	}

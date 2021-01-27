@@ -157,7 +157,7 @@ vec3 brdfModulation(in vec3 normal, in vec3 eye, in vec3 light, in vec3 diff, in
 	return kD + kS;
 }
 
-EmissiveTriangleInfo sampleTwoLevelLight(in vec3 origin, out float invPdf)
+EmissiveTriangleInfo sampleTwoLevelLight(inout uint seed, in vec3 origin, out float invPdf)
 {
 	EmissiveTriangleInfo result;
 
@@ -173,7 +173,7 @@ EmissiveTriangleInfo sampleTwoLevelLight(in vec3 origin, out float invPdf)
 		for(int i = 0; i < pushC.numGeomSamplesM; ++i)
 		{
 			// Choose an alias
-			float r = rnd(prd.seed)*nLights;
+			float r = rnd(seed)*nLights;
 			uint bucket = uint(r);
 			float p = r-bucket;
 			AliasTable alias = lightAlias[nonuniformEXT(bucket)];
@@ -188,7 +188,7 @@ EmissiveTriangleInfo sampleTwoLevelLight(in vec3 origin, out float invPdf)
 			float dist2 = dot(meanPos-origin, meanPos-origin);
 			float w = 1 / dist2;
 			accumReservoirWeight += w;
-			if(rnd(prd.seed) < w/accumReservoirWeight)
+			if(rnd(seed) < w/accumReservoirWeight)
 			{
 				lightInfo = candidate;
 				sampleWeight = w;
@@ -199,13 +199,13 @@ EmissiveTriangleInfo sampleTwoLevelLight(in vec3 origin, out float invPdf)
 	}
 	else
 	{
-		emitterIndex = lcg(prd.seed) % nLights;
+		emitterIndex = lcg(seed) % nLights;
 		lightInfo = lightIstances[nonuniformEXT(emitterIndex)];
 		invPdf = nLights * lightInfo.numTriangles;
 	}
 
 	// Retrieve the Primitive mesh buffer information
-	uint triNdx = lcg(prd.seed) % lightInfo.numTriangles;
+	uint triNdx = lcg(seed) % lightInfo.numTriangles;
 
 	// Getting the 'first index' for this mesh (offset of the mesh + offset of the triangle)
 	result.indexOffset = lightInfo.indexOffset + (3 * triNdx);
@@ -215,35 +215,121 @@ EmissiveTriangleInfo sampleTwoLevelLight(in vec3 origin, out float invPdf)
 	return result;
 }
 
-EmissiveTriangleInfo sampleEmissiveTris(out float invPdf)
+EmissiveTriangleInfo sampleTriangleWithAliasTable(inout uint seed)
+{
+	uint nLights = pushC.numEmissiveTriangles;
+	// Choose an alias
+	//float r = rnd(seed)*nLights;
+	lcg(seed);
+	uint bucket = seed % nLights;//uint(r);
+	float p = rnd(seed);//r-bucket;
+	AliasTable alias = triangleAlias[nonuniformEXT(bucket)];
+	uint emitterIndex = (p>alias.cutoff) ? alias.Ki : bucket;
+	return emissiveTriangles[emitterIndex];
+}
+
+EmissiveTriangleInfo sampleEmissiveTris(inout uint seed, out float invPdf)
 {
 	EmissiveTriangleInfo result;
 
 	uint nLights = pushC.numEmissiveTriangles;
 	if(renderFlag(FLAG_USE_ALIAS))
 	{
-		// Choose an alias
-		float r = rnd(prd.seed)*nLights;
-		uint bucket = uint(r);
-		float p = r-bucket;
-		AliasTable alias = triangleAlias[nonuniformEXT(bucket)];
-		uint emitterIndex = (p>alias.cutoff) ? alias.Ki : bucket;
-		result = emissiveTriangles[emitterIndex];
+		result = sampleTriangleWithAliasTable(seed);
 		invPdf = 1.f / result.weightedRadiance;
 	}
 	else
 	{
 		// Choose an emissive triangle
 		invPdf = nLights;
-		uint emitterIndex = lcg(prd.seed) % nLights;
+		uint emitterIndex = lcg(seed) % nLights;
 		result = emissiveTriangles[emitterIndex];
+		invPdf = 1 / nLights;
 	}
 
 	return result;
 }
 
-vec3 explicitLightSampling(in vec3 origin, in vec3 normal, in vec3 eye, in vec3 diffuse, in vec3 specular, float roughness)
+void uniformSampleTriangle(inout uint seed, in EmissiveTriangleInfo triangle, out vec3 x, out vec3 normal, out float triangleArea)
 {
+	// Getting the 3 indices of the triangle (local)
+	uint indexOffset = triangle.indexOffset;
+	ivec3 triangleIndex = ivec3(indices[nonuniformEXT(indexOffset + 0)],  //
+	                          indices[nonuniformEXT(indexOffset + 1)],  //
+	                          indices[nonuniformEXT(indexOffset + 2)]);
+	triangleIndex += ivec3(triangle.vtxOffset);  // (global)
+
+  	// Sample the triangle
+  	mat4 worldFromInstance = matrices[triangle.matrixIndex];
+  	const vec3 pos0 = (worldFromInstance * vec4(getVertex(triangleIndex.x), 1.0)).xyz;
+  	const vec3 pos1 = (worldFromInstance * vec4(getVertex(triangleIndex.y), 1.0)).xyz;
+  	const vec3 pos2 = (worldFromInstance * vec4(getVertex(triangleIndex.z), 1.0)).xyz;
+
+  	vec3 scaledNormal = cross(pos1-pos0, pos2-pos0);
+  	
+  	triangleArea = sqrt(dot(scaledNormal, scaledNormal));
+  	normal = normalize(scaledNormal);
+  	x = sampleTriangle(seed, pos0, pos1, pos2);
+}
+
+vec3 triangleRIS(inout uint seed, in vec3 origin, in vec3 normal, in vec3 eye, in vec3 diffuse, in vec3 specular, float roughness)
+{
+	int numCandidates = max(1, pushC.numTrianglesM);
+	float reservoirWeight = 0;
+	vec3 sampleDir;
+	float sampleDist2;
+
+	// Sample candidates with probability proportional to radiant area
+	for(int i = 0; i < numCandidates; ++i)
+	{
+		// Sample a random radiant point
+		EmissiveTriangleInfo radiantTriangle = sampleTriangleWithAliasTable(seed); // P(t) = t.weightedRadiance;
+
+		vec3 x, lightNormal;
+		float triangleArea;
+		uniformSampleTriangle(seed, radiantTriangle, x, lightNormal, triangleArea);
+
+		// Compute target probability of the sample
+		vec3 scaledDir = x-origin;
+		float dist2 = dot(scaledDir, scaledDir);
+		vec3 dir = normalize(scaledDir);
+		float cosL = max(0, (dot(-dir, lightNormal)));
+		float cosS = max(0, dot(dir, normal));
+		float w = cosL*cosS*triangleArea/(dist2*radiantTriangle.weightedRadiance); // Candidate sample weight
+
+		if(w == 0)
+			continue;
+		// Reservoir resampling
+		reservoirWeight += w;
+		if(rnd(seed) <= w/reservoirWeight)
+		{
+			sampleDir = dir;
+			sampleDist2 = dist2;
+		}
+	}
+
+	if(reservoirWeight == 0)
+		return vec3(0.0);
+
+	// Evaluate the sample f(x)/^p(x)
+	float dist = sqrt(sampleDist2);
+	traceRay(origin, sampleDir, dist+1e-3);
+	if(prd.worldPos.w >= dist-1e-3)
+	{
+		// BRDF
+		vec3 brdf = brdfModulation(normal,eye,sampleDir,diffuse,specular,roughness);
+		return prd.emittance * brdf * reservoirWeight / numCandidates;
+	}
+
+	return vec3(0.0);
+}
+
+vec3 explicitLightSampling(inout uint seed, in vec3 origin, in vec3 normal, in vec3 eye, in vec3 diffuse, in vec3 specular, float roughness)
+{
+	if(renderFlag(FLAG_EMIS_TRIS))
+	{
+		return triangleRIS(seed, origin, normal, eye, diffuse, specular, roughness);
+	}
 	// Choose a triangle
 	float accumReservoirWeight = 0;
 	float sampleWeight = 0;
@@ -255,13 +341,13 @@ vec3 explicitLightSampling(in vec3 origin, in vec3 normal, in vec3 eye, in vec3 
 	EmissiveTriangleInfo lightInfo;
 	if(!renderFlag(FLAG_EMIS_TRIS))
 	{
-		lightInfo = sampleTwoLevelLight(origin, sampleInvPDF);
+		lightInfo = sampleTwoLevelLight(seed, origin, sampleInvPDF);
 	}
 	for(int i = 0; i < pushC.numTrianglesM; ++i)
 	{
 		if(renderFlag(FLAG_EMIS_TRIS))
 		{
-			lightInfo = sampleEmissiveTris(sampleInvPDF);
+			lightInfo = sampleEmissiveTris(seed, sampleInvPDF);
 		}
 
 		// Getting the 3 indices of the triangle (local)
@@ -276,7 +362,7 @@ vec3 explicitLightSampling(in vec3 origin, in vec3 normal, in vec3 eye, in vec3 
 	  	const vec3 pos0 = (worldFromInstance * vec4(getVertex(triangleIndex.x), 1.0)).xyz;
 	  	const vec3 pos1 = (worldFromInstance * vec4(getVertex(triangleIndex.y), 1.0)).xyz;
 	  	const vec3 pos2 = (worldFromInstance * vec4(getVertex(triangleIndex.z), 1.0)).xyz;
-	  	vec3 vtxPos = sampleTriangle(prd.seed, pos0, pos1, pos2);
+	  	vec3 vtxPos = sampleTriangle(seed, pos0, pos1, pos2);
 
 		vec3 target = vtxPos.xyz;
 		vec3 candidateDir = target - origin;
@@ -294,7 +380,7 @@ vec3 explicitLightSampling(in vec3 origin, in vec3 normal, in vec3 eye, in vec3 
 		{
 			accumReservoirWeight += w;
 			//triangleArea = sqrt(dot(lightNormal,lightNormal))/2;
-			if(rnd(prd.seed) < w/accumReservoirWeight)
+			if(rnd(seed) < w/accumReservoirWeight)
 			{
 				sampleWeight = w;
 				dir = candidateDir;
@@ -324,9 +410,9 @@ vec3 explicitLightSampling(in vec3 origin, in vec3 normal, in vec3 eye, in vec3 
 void main()
 {
 	// Initialize the random number
-	prd.seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, int(clockARB()));
+	uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, int(clockARB()));
 
-	const vec2 pixelOffset = renderFlag(FLAG_JITTER_AA) ? vec2(rnd(prd.seed), rnd(prd.seed)) : vec2(0.5);
+	const vec2 pixelOffset = renderFlag(FLAG_JITTER_AA) ? vec2(rnd(seed), rnd(seed)) : vec2(0.5);
 	const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + pixelOffset;
 	const vec2 inUV        = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
 	vec2       d           = inUV * 2.0 - 1.0;
@@ -342,7 +428,7 @@ void main()
 
 		if(renderFlag(FLAG_DOF))
 		{
-			vec4 viewSpaceLensSample = vec4(sampleDisk(prd.seed, pushC.lensRadius) * vec2(1.0, float(gl_LaunchSizeEXT.x)/gl_LaunchSizeEXT.y), 0, 1);
+			vec4 viewSpaceLensSample = vec4(sampleDisk(seed, pushC.lensRadius) * vec2(1.0, float(gl_LaunchSizeEXT.x)/gl_LaunchSizeEXT.y), 0, 1);
 			origin = cam.viewInverse * viewSpaceLensSample;
 
 			direction = cam.viewInverse * vec4(normalize(target.xyz*pushC.focalDistance-viewSpaceLensSample.xyz), 0);
@@ -381,6 +467,7 @@ void main()
 			if(nextEventEstimation)
 			{
 				rayAccumLight += lightModulation * explicitLightSampling(
+					seed,
 					origin.xyz,
 					hitNormal,
 					eye,
@@ -390,7 +477,7 @@ void main()
 			}
 
 			// Next ray
-			direction.xyz = samplingCosHemisphere(prd.seed, tangent, bitangent, hitNormal);
+			direction.xyz = samplingCosHemisphere(seed, tangent, bitangent, hitNormal);
 			lightModulation *= brdfModulation(hitNormal,eye,direction.xyz,diffuseColor,specColor,roughness);
 		}
 	}

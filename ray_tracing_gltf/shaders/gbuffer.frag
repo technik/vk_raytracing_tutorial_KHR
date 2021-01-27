@@ -6,6 +6,7 @@
 
 #include "binding.glsl"
 #include "gltf.glsl"
+#include "pbr.glsl"
 
 
 layout(push_constant) uniform shaderInformation
@@ -23,12 +24,14 @@ pushC;
 //layout(location = 0) flat in int matIndex;
 layout(location = 1) in vec2 fragTexCoord;
 layout(location = 2) in vec3 fragNormal;
-layout(location = 3) in vec3 viewDir;
-layout(location = 4) in vec3 worldPos;
+layout(location = 3) in vec4 fragTan;
+layout(location = 4) in vec3 viewDir;
+layout(location = 5) in vec3 worldPos;
 // Outgoing
-layout(location = 0) out vec4 outNormals;
-layout(location = 1) out vec4 outPBR;
-layout(location = 2) out vec4 outEmissive;
+layout(location = 0) out vec4 outBaseColor;
+layout(location = 1) out vec4 outNormals;
+layout(location = 2) out vec4 outPBR;
+layout(location = 3) out vec4 outEmissive;
 // Buffers
 layout(set = 0, binding = B_MATERIALS) buffer _GltfMaterial { GltfShadeMaterial materials[]; };
 layout(set = 0, binding = B_TEXTURES) uniform sampler2D[] textureSamplers;
@@ -38,10 +41,21 @@ layout(set = 0, binding = B_TEXTURES) uniform sampler2D[] textureSamplers;
 
 void main()
 {
+  vec3 N = normalize(fragNormal);
+  vec4 msTangent = fragTan;
+  msTangent.xyz = normalize(msTangent.xyz);
+
+  bool albedo85 = false;
+  FragmentInfo surfaceProperties = sampleMaterial(
+    pushC.matetrialId,
+    fragTexCoord,
+    N,
+    msTangent,
+    albedo85);
+
   // Material of the object
   GltfShadeMaterial mat = materials[nonuniformEXT(pushC.matetrialId)];
 
-  vec3 N = normalize(fragNormal);
 
   // Vector toward light
   vec3  L;
@@ -73,4 +87,7 @@ void main()
 
   // Result
   outEmissive = vec4(lightIntensity * (diffuse + specular), 1);
+  outNormals = vec4(N, 1.0);
+  outPBR = vec4(mat.metallic, mat.roughness, 0, 1);
+  outBaseColor = vec4(diffuse, 1);
 }

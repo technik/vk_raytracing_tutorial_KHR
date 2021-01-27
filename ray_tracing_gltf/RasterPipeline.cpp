@@ -64,7 +64,7 @@ bool RasterPipeline::tryLoadPipeline()
 	// Creating the Pipeline
 	std::vector<std::string>                paths = defaultSearchPaths;
 	nvvk::GraphicsPipelineGeneratorCombined gpb(m_device, m_pipelineLayout, m_renderPass);
-	gpb.setBlendAttachmentCount(3);
+	gpb.setBlendAttachmentCount(4);
 	vk::PipelineColorBlendAttachmentState blendState;
 	blendState.blendEnable = false;
 	blendState.colorWriteMask =
@@ -73,6 +73,7 @@ bool RasterPipeline::tryLoadPipeline()
 	gpb.setBlendAttachmentState(0, blendState);
 	gpb.setBlendAttachmentState(1, blendState);
 	gpb.setBlendAttachmentState(2, blendState);
+	gpb.setBlendAttachmentState(3, blendState);
 	gpb.depthStencilState.depthTestEnable = true;
 	gpb.addShader(nvh::loadFile(m_vtxShader, true, paths, true), vkSS::eVertex);
 	gpb.addShader(nvh::loadFile(m_fragShader, true, paths, true), vkSS::eFragment);

@@ -137,9 +137,11 @@ public:
   void createGBufferRender();
   void createGBufferPipeline();
   void rasterizeGBuffer(const vk::CommandBuffer& cmdBuf);
+  vk::Format						m_basColorFormat{ vk::Format::eR16G16B16A16Sfloat };
   vk::Format						m_normalsBufferFormat{ vk::Format::eR16G16B16A16Sfloat };
   vk::Format						m_pbrBufferFormat{ vk::Format::eR8G8B8A8Unorm };
   vk::Format						m_emissiveFormat{ vk::Format::eR16G16B16A16Sfloat };
+  nvvk::Texture						m_baseColorRT;
   nvvk::Texture						m_normalsRT;
   nvvk::Texture						m_pbrRT;
   nvvk::Texture						m_emissiveRT;

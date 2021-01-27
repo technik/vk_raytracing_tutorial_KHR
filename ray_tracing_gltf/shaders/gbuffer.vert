@@ -36,8 +36,9 @@ layout(location = 3) in vec2 inTexCoord;
 //layout(location = 0) flat out int matIndex;
 layout(location = 1) out vec2 fragTexCoord;
 layout(location = 2) out vec3 fragNormal;
-layout(location = 3) out vec3 viewDir;
-layout(location = 4) out vec3 worldPos;
+layout(location = 3) out vec4 fragTan;
+layout(location = 4) out vec3 viewDir;
+layout(location = 5) out vec3 worldPos;
 
 out gl_PerVertex
 {
@@ -56,6 +57,8 @@ void main()
   viewDir      = vec3(worldPos - origin);
   fragTexCoord = inTexCoord;
   fragNormal   = vec3(objMatrixIT * vec4(inNormal, 0.0));
+  fragTan.xyz   = vec3(objMatrixIT * vec4(inTangent.xyz, 0.0));
+  fragTan.w = inTangent.w;
   //  matIndex     = inMatID;
 
   gl_Position = ubo.proj * ubo.view * vec4(worldPos, 1.0);

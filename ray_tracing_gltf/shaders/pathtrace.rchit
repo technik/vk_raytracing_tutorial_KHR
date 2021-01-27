@@ -187,7 +187,7 @@ void main()
 
         // Metallic & Roughness
         prd.metallic = mat.metallic;
-        prd.roughness = mat.roughness*1;
+        prd.roughness = mat.roughness*0.1;
         if(mat.pbrMetallicRoughnessTexture > -1)
         {
             uint txtId = mat.pbrMetallicRoughnessTexture;
@@ -195,6 +195,8 @@ void main()
             prd.metallic *= metallicRoughness.b;
             prd.roughness *= metallicRoughness.g;
         }
+        //prd.metallic = 1;//mat.metallic;
+        //prd.roughness = 0.051;
     }
     else
     {
