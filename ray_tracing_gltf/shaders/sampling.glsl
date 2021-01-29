@@ -32,10 +32,50 @@ uint lcg(inout uint prev)
   return prev & 0x00FFFFFF;
 }
 
+uint squirrel3(uint seed)
+{
+  uint mangled = seed * 0xB5297A4D;
+  mangled ^= mangled >> 8;
+  mangled *= 0x68e31da4;
+  mangled ^= mangled << 8;
+  mangled *= 0x1b56c4e9;
+  mangled ^= mangled >> 8;
+  return mangled;
+}
+
+uint squirrel3(uint pos, uint seed)
+{
+  uint mangled = pos * 0xB5297A4D;
+  mangled ^= mangled >> 8;
+  mangled += seed;
+  mangled *= 0x68e31da4;
+  mangled ^= mangled << 8;
+  mangled *= 0x1b56c4e9;
+  mangled ^= mangled >> 8;
+  return mangled;
+}
+
+uint noise2d(uint a, uint b)
+{
+  return squirrel3(a + 198491317 * b);
+}
+
+uint noise2(uint a, uint b, uint seed)
+{
+  return squirrel3(a + 198491317 * b, seed);
+}
+
+uint squirrelRng(inout uint seed)
+{
+  seed = squirrel3(seed);
+  return seed & 0x00ffFFff;
+}
+
 // Generate a random float in [0, 1) given the previous RNG state
 float rnd(inout uint prev)
 {
-  return (float(lcg(prev)) / float(0x01000000));
+  return (float(squirrelRng(prev)) / float(0x01000000));
+  //return (float(lcg(prev)) / float(0x01000000));
 }
 
 

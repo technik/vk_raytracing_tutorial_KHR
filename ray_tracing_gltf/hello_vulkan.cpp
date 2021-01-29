@@ -104,14 +104,12 @@ void HelloVulkan::renderUI()
 		mustClean |= ImGui::Checkbox("Specular", &showSpecular);
 		bool showDiffuse = !renderFlag(FLAG_NO_DIFF);
 		mustClean |= ImGui::Checkbox("Diffuse", &showDiffuse);
-		bool nextEventEstim = renderFlag(FLAG_NEXT_EE);
-		mustClean |= ImGui::Checkbox("Next Event", &nextEventEstim);
+		mustClean |= ImGui::Checkbox("Next Event", &m_useNextEE);
 		bool useEmmissiveTris = renderFlag(FLAG_EMIS_TRIS);
-		bool useAliasTables = renderFlag(FLAG_USE_ALIAS);
-		if (nextEventEstim)
+		if (m_useNextEE)
 		{
 			mustClean |= ImGui::Checkbox("Emmisive Tris", &useEmmissiveTris);
-			mustClean |= ImGui::Checkbox("Alias Tables", &useAliasTables);
+			mustClean |= ImGui::Checkbox("Alias Tables", &m_useAliasTables);
 		}
 
 		m_rtPushConstants.renderFlags =
@@ -120,9 +118,9 @@ void HelloVulkan::renderUI()
 			(albedo085 ? FLAG_ALBEDO_85 : 0) |
 			(showSpecular ? 0 : FLAG_NO_SPEC) |
 			(showDiffuse ? 0 : FLAG_NO_DIFF) |
-			(nextEventEstim ? FLAG_NEXT_EE : 0) |
+			(m_useNextEE ? FLAG_NEXT_EE : 0) |
 			(useEmmissiveTris ? FLAG_EMIS_TRIS : 0) |
-			(useAliasTables ? FLAG_USE_ALIAS : 0);
+			(m_useAliasTables ? FLAG_USE_ALIAS : 0);
 		if (dof)
 		{
 			float expFocalDistance = log10f(m_rtPushConstants.focalDistance);

@@ -330,7 +330,7 @@ EmissiveTriangleInfo sampleTriangleTwoLevels(inout float reservoirWeight, inout 
 {
 	EmissiveTriangleInfo result;
 
-	
+	if(false)
 	{
 		reservoirWeight = 0;
 		sampleWeight = 0;
@@ -413,7 +413,13 @@ vec3 twoLevelRIS(inout uint seed, in vec3 origin, in vec3 normal, in vec3 eye, i
 		float w = cosL*cosS*triangleArea/(dist2*radiantTriangle.weightedRadiance); // Candidate sample weight
 
 		if(w == 0)
+		{
+			// Potentially occluded geometry. Reset geom reservoir for next iteration
+			//geometryReservoir = 0;
+			//geometrySample = 0;
+			//geometryReservoirSize = 0;
 			continue;
+		}
 		// Reservoir resampling
 		reservoirWeight += w;
 		if(rnd(seed) <= w/reservoirWeight)
@@ -454,7 +460,8 @@ vec3 explicitLightSampling(inout uint seed, in vec3 origin, in vec3 normal, in v
 void main()
 {
 	// Initialize the random number
-	uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, int(clockARB()));
+	//uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, int(clockARB()));
+	uint seed = noise2(gl_LaunchIDEXT.y, gl_LaunchIDEXT.x, int(clockARB()));
 
 	const vec2 pixelOffset = renderFlag(FLAG_JITTER_AA) ? vec2(rnd(seed), rnd(seed)) : vec2(0.5);
 	const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + pixelOffset;
@@ -463,6 +470,8 @@ void main()
 
 	const bool nextEventEstimation = renderFlag(FLAG_NEXT_EE);
 	vec3 rayAccumLight = vec3(0);
+
+	float defensive = 0.2;
 
 	for(int i = 0; i < pushC.numPathsPerPixel; ++i)
 	{
@@ -491,8 +500,10 @@ void main()
 			// Emissive
 			if(prd.emittance != vec3(0.0))
 			{
+				float radW = defensive;
 				if(!nextEventEstimation || rayDepth == 0)
-					rayAccumLight += prd.emittance * lightModulation;
+					radW = 1;
+				rayAccumLight += radW * prd.emittance * lightModulation;
 				break; // Terminate ray early on emissive surfaces
 			}
 
@@ -510,7 +521,7 @@ void main()
 			float roughness = prd.roughness;
 			if(nextEventEstimation)
 			{
-				rayAccumLight += lightModulation * explicitLightSampling(
+				rayAccumLight += (1-defensive) * lightModulation * explicitLightSampling(
 					seed,
 					origin.xyz,
 					hitNormal,

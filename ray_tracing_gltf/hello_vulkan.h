@@ -198,13 +198,13 @@ public:
 		int   frame{ 0 };
 		float lensRadius{ 0.01f };
 		float focalDistance{ 1.f };
-		int maxBounces{ 4 };
+		int maxBounces{ 2 };
 		int firstBounce{ 0 };
 		int numLightInstances{ 0 };
 		uint numEmissiveTris{ 0 };
 		int numPathsPerPixel{ 1 };
-		int numGeomSamplesM{ 1 };
-		int numTrianglesM{ 1 };
+		int numGeomSamplesM{ 8 };
+		int numTrianglesM{ 4 };
 	} m_rtPushConstants;
 
 	struct SamplingAlias
@@ -238,6 +238,9 @@ public:
 
 		float area(const nvh::GltfScene& scene);
 	};
+
+	bool m_useNextEE{ true };
+	bool m_useAliasTables{ true };
 
 	std::vector<EmissiveTrangleInfo> m_emissiveTriangles;
 	nvvk::Buffer   m_emissiveTrianglesBuffer;
