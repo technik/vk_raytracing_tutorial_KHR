@@ -658,12 +658,16 @@ void HelloVulkan::loadAnimations(tinygltf::Model& document)
 			if (posChannel && rotChannel && sclChannel)
 			{
 				auto target = channel.target_node;
-				m_animations.push_back(Animation(*posChannel, *rotChannel, *sclChannel, m_instanceMtx[target]));
+				m_animations.push_back(Animation(*posChannel, *rotChannel, *sclChannel, m_nodeMtx[target]));
 				break;
 			}
 		}
 	}
 }
+
+
+void HelloVulkan::playAnimations(std::chrono::duration<float> dt)
+{}
 
 //--------------------------------------------------------------------------------------------------
 // Loading the OBJ file and setting up all buffers
@@ -736,6 +740,7 @@ void HelloVulkan::loadScene(const std::string& filename)
 	  m_instanceMtx.emplace_back(node.worldMatrix);
   }
   m_matrixBuffer = m_alloc.createBuffer(cmdBuf, m_instanceMtx, vkBU::eStorageBuffer);
+  m_nodeMtx.resize(tmodel.nodes.size());
   loadAnimations(tmodel);
 
   // The following is used to find the primitive mesh information in the CHIT

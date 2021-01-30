@@ -250,6 +250,8 @@ public:
 
 	// Animations
 	void loadAnimations(tinygltf::Model& document);
+	void playAnimations(std::chrono::duration<float> dt);
 	std::vector<Animation> m_animations;
+	std::vector<nvmath::mat4f> m_nodeMtx;
 	std::vector<nvmath::mat4f> m_instanceMtx;
 };
