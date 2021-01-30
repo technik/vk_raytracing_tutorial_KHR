@@ -330,7 +330,7 @@ EmissiveTriangleInfo sampleTriangleTwoLevels(inout float reservoirWeight, inout 
 {
 	EmissiveTriangleInfo result;
 
-	if(false)
+	//if(false)
 	{
 		reservoirWeight = 0;
 		sampleWeight = 0;
@@ -355,8 +355,6 @@ EmissiveTriangleInfo sampleTriangleTwoLevels(inout float reservoirWeight, inout 
 		float dist2 = dot(meanPos-origin, meanPos-origin);
 
 		float w = 1/max(1e-2, dist2);
-		if(w == 0)
-			continue;
 
 		reservoirWeight += w;
 
@@ -412,7 +410,7 @@ vec3 twoLevelRIS(inout uint seed, in vec3 origin, in vec3 normal, in vec3 eye, i
 
 		float w = cosL*cosS*triangleArea/(dist2*radiantTriangle.weightedRadiance); // Candidate sample weight
 
-		if(w == 0)
+		if(w <= 0)
 		{
 			// Potentially occluded geometry. Reset geom reservoir for next iteration
 			//geometryReservoir = 0;
@@ -422,7 +420,7 @@ vec3 twoLevelRIS(inout uint seed, in vec3 origin, in vec3 normal, in vec3 eye, i
 		}
 		// Reservoir resampling
 		reservoirWeight += w;
-		if(rnd(seed) <= w/reservoirWeight)
+		if(rnd(seed) < w/reservoirWeight)
 		{
 			sampleDir = dir;
 			sampleDist2 = dist2;
@@ -435,7 +433,7 @@ vec3 twoLevelRIS(inout uint seed, in vec3 origin, in vec3 normal, in vec3 eye, i
 	// Evaluate the sample f(x)/^p(x)
 	float dist = sqrt(sampleDist2);
 	traceRay(origin, sampleDir, dist+1e-3);
-	if(prd.worldPos.w >= dist-1e-3)
+	if(prd.worldPos.w > dist-1e-3)
 	{
 		// BRDF
 		vec3 brdf = brdfModulation(normal,eye,sampleDir,diffuse,specular,roughness);

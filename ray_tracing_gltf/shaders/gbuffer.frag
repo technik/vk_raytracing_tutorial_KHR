@@ -6,7 +6,6 @@
 
 #include "binding.glsl"
 #include "gltf.glsl"
-#include "pbr.glsl"
 
 
 layout(push_constant) uniform shaderInformation
@@ -19,7 +18,6 @@ layout(push_constant) uniform shaderInformation
 }
 pushC;
 
-// clang-format off
 // Incoming 
 //layout(location = 0) flat in int matIndex;
 layout(location = 1) in vec2 fragTexCoord;
@@ -34,10 +32,87 @@ layout(location = 2) out vec4 outPBR;
 layout(location = 3) out vec4 outEmissive;
 // Buffers
 layout(set = 0, binding = B_MATERIALS) buffer _GltfMaterial { GltfShadeMaterial materials[]; };
-layout(set = 0, binding = B_TEXTURES) uniform sampler2D[] textureSamplers;
+layout(set = 0, binding = B_TEXTURES) uniform sampler2D[] texturesMap;
 
-// clang-format on
+struct FragmentInfo
+{
+  vec3 emittance;
+  vec3 baseColor;
+  float metallic;
+  float roughness;
+  vec3 msNormal;
+};
 
+FragmentInfo sampleMaterial(int matIndex, in vec2 texcoord0, in vec3 msNormal, in vec4 msTangent, bool albedo85)
+{
+  FragmentInfo result;
+  result.msNormal = msNormal;
+  if(matIndex >= 0)
+    {
+        GltfShadeMaterial mat = materials[nonuniformEXT(matIndex)];
+        // Emissive color
+        result.emittance = mat.emissiveFactor;
+        if(mat.emissiveTexture > -1)
+        {
+            uint txtId = mat.emissiveTexture;
+            result.emittance *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz * 10;
+        }
+        // baseColor
+        result.baseColor    = mat.pbrBaseColorFactor.xyz;
+        if(mat.pbrBaseColorTexture > -1)
+        {
+            uint txtId = mat.pbrBaseColorTexture;
+            result.baseColor *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
+        }
+
+        if(mat.normalTexture >= 0)
+        {
+            vec3 msBitangent = cross(msNormal, msTangent.xyz) * msTangent.w;
+
+            mat3 modelFromTangent = mat3(msTangent, msBitangent, msNormal);
+
+            uint txtId = mat.normalTexture;
+            vec3 tsNormal = texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
+            tsNormal = pow(tsNormal, vec3(1/2.2)) + vec3(0,0,1e-2);
+            tsNormal = normalize(tsNormal * 255.0 - 127.0);
+            result.msNormal = normalize(modelFromTangent * tsNormal);
+        }
+
+        // Encode transmission in baseColor's alpha
+        /*float transmissionFactor = mat.transmissionFactor;
+        if(mat.transmissionTexture >= 0)
+        {
+            uint txtId = mat.transmissionTexture;
+            transmissionFactor *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).r;
+        }
+        result.baseColor.a = transmissionFactor;*/
+
+        // Metallic & Roughness
+        result.metallic = mat.metallic;
+        result.roughness = mat.roughness*0.1;
+        if(mat.pbrMetallicRoughnessTexture > -1)
+        {
+            uint txtId = mat.pbrMetallicRoughnessTexture;
+            vec3 metallicRoughness = texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
+            result.metallic *= metallicRoughness.b;
+            result.roughness *= metallicRoughness.g;
+        }
+    }
+    else
+    {
+        result.baseColor = vec3(1);
+        result.emittance = vec3(0);
+        result.metallic = 0;
+        result.roughness = 1;
+    }
+
+    if(albedo85)
+    {
+        result.baseColor = vec3(0.85);
+    }
+
+    return result;
+}
 
 void main()
 {
@@ -53,41 +128,9 @@ void main()
     msTangent,
     albedo85);
 
-  // Material of the object
-  GltfShadeMaterial mat = materials[nonuniformEXT(pushC.matetrialId)];
-
-
-  // Vector toward light
-  vec3  L;
-  float lightIntensity = pushC.lightIntensity;
-  if(pushC.lightType == 0)
-  {
-    vec3  lDir     = pushC.lightPosition - worldPos;
-    float d        = length(lDir);
-    lightIntensity = pushC.lightIntensity / (d * d);
-    L              = normalize(lDir);
-  }
-  else
-  {
-    L = normalize(pushC.lightPosition - vec3(0));
-  }
-
-
-  // Diffuse
-  vec3 diffuse = computeDiffuse(mat, L, N);
-  if(mat.pbrBaseColorTexture > -1)
-  {
-    uint txtId      = mat.pbrBaseColorTexture;
-    vec3 diffuseTxt = texture(textureSamplers[nonuniformEXT(txtId)], fragTexCoord).xyz;
-    diffuse *= diffuseTxt;
-  }
-
-  // Specular
-  vec3 specular = computeSpecular(mat, viewDir, L, N);
-
   // Result
-  outEmissive = vec4(lightIntensity * (diffuse + specular), 1);
-  outNormals = vec4(N, 1.0);
-  outPBR = vec4(mat.metallic, mat.roughness, 0, 1);
-  outBaseColor = vec4(diffuse, 1);
+  outEmissive = vec4(surfaceProperties.emittance, 1);
+  outNormals = vec4(surfaceProperties.msNormal, 1.0);
+  outPBR = vec4(surfaceProperties.metallic, surfaceProperties.roughness, 0, 1);
+  outBaseColor = vec4(surfaceProperties.baseColor, 1);
 }
