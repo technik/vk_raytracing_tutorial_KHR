@@ -602,6 +602,69 @@ std::vector<vec4f> generateTangentSpace(
 	return tangentVectors;
 }
 
+void HelloVulkan::loadAnimations(tinygltf::Model& document)
+{
+	for (auto& gltfAnim : document.animations)
+	{
+		Animation::PositionTrack* posChannel = nullptr;
+		Animation::RotationTrack* rotChannel = nullptr;
+		Animation::ScaleTrack* sclChannel = nullptr;
+
+		Animation::PositionTrack pos;
+		Animation::RotationTrack rot;
+		Animation::ScaleTrack scale;
+
+		for (auto& channel : gltfAnim.channels)
+		{
+			auto& sampler = gltfAnim.samplers[channel.sampler];
+			auto& input = document.accessors[sampler.input];
+			auto& output = document.accessors[sampler.output];
+
+			auto& inputBv = document.bufferViews[input.bufferView];
+			auto inputBuffer = inputBv.buffer;
+			auto inputData = document.buffers[inputBuffer].data.data() + inputBv.byteOffset + input.byteOffset;
+
+			auto& outputBv = document.bufferViews[output.bufferView];
+			auto outputBuffer = outputBv.buffer;
+			auto outputData = document.buffers[outputBuffer].data.data() + outputBv.byteOffset + output.byteOffset;
+
+			if (channel.target_path == "translation")
+			{
+				pos.key.resize(input.count);
+				memcpy(pos.key.data(), inputData, sizeof(float) * input.count);
+				pos.value.resize(output.count);
+				memcpy(pos.value.data(), outputData, sizeof(vec3) * input.count);
+				posChannel = &pos;
+			}
+
+			if (channel.target_path == "rotation")
+			{
+				rot.key.resize(input.count);
+				memcpy(rot.key.data(), inputData, sizeof(float) * input.count);
+				rot.value.resize(output.count);
+				memcpy(rot.value.data(), outputData, sizeof(vec4) * input.count);
+				rotChannel = &rot;
+			}
+
+			if (channel.target_path == "scale")
+			{
+				scale.key.resize(input.count);
+				memcpy(scale.key.data(), inputData, sizeof(float) * input.count);
+				scale.value.resize(output.count);
+				memcpy(scale.value.data(), outputData, sizeof(vec3) * input.count);
+				sclChannel = &scale;
+			}
+
+			if (posChannel && rotChannel && sclChannel)
+			{
+				auto target = channel.target_node;
+				m_animations.push_back(Animation(*posChannel, *rotChannel, *sclChannel, m_instanceMtx[target]));
+				break;
+			}
+		}
+	}
+}
+
 //--------------------------------------------------------------------------------------------------
 // Loading the OBJ file and setting up all buffers
 //
@@ -630,7 +693,6 @@ void HelloVulkan::loadScene(const std::string& filename)
   LOGW(warn.c_str());
   LOGE(error.c_str());
 
-  m_gltfScene.importMaterials(tmodel);
   m_gltfScene.importDrawableNodes(tmodel,
 	  nvh::GltfAttributes::Normal | nvh::GltfAttributes::Texcoord_0 | nvh::GltfAttributes::Tangent);
 
@@ -668,11 +730,28 @@ void HelloVulkan::loadScene(const std::string& filename)
   m_uvBuffer     = m_alloc.createBuffer(cmdBuf, m_gltfScene.m_texcoords0,
                                     vkBU::eVertexBuffer | vkBU::eStorageBuffer);
 
-  buildLightTables(cmdBuf);
+  // Instance Matrices used by rasterizer
+  for(auto& node : m_gltfScene.m_nodes)
+  {
+	  m_instanceMtx.emplace_back(node.worldMatrix);
+  }
+  m_matrixBuffer = m_alloc.createBuffer(cmdBuf, m_instanceMtx, vkBU::eStorageBuffer);
+  loadAnimations(tmodel);
 
+  // The following is used to find the primitive mesh information in the CHIT
+  std::vector<RtPrimitiveLookup> primLookup;
+  for(auto& primMesh : m_gltfScene.m_primMeshes)
+  {
+    primLookup.push_back({primMesh.firstIndex, primMesh.vertexOffset, primMesh.materialIndex, primMesh.indexCount});
+  }
+  m_rtPrimLookup =
+      m_alloc.createBuffer(cmdBuf, primLookup, vk::BufferUsageFlagBits::eStorageBuffer);
+
+  m_gltfScene.importMaterials(tmodel);
+  buildLightTables(cmdBuf);
   // Copying all materials, only the elements we need
   std::vector<GltfShadeMaterial> shadeMaterials;
-  for(auto& m : m_gltfScene.m_materials)
+  for (auto& m : m_gltfScene.m_materials)
   {
 	  shadeMaterials.emplace_back(
 		  GltfShadeMaterial{
@@ -686,23 +765,6 @@ void HelloVulkan::loadScene(const std::string& filename)
 			m.pbrMetallicFactor });
   }
   m_materialBuffer = m_alloc.createBuffer(cmdBuf, shadeMaterials, vkBU::eStorageBuffer);
-
-  // Instance Matrices used by rasterizer
-  std::vector<nvmath::mat4f> nodeMatrices;
-  for(auto& node : m_gltfScene.m_nodes)
-  {
-    nodeMatrices.emplace_back(node.worldMatrix);
-  }
-  m_matrixBuffer = m_alloc.createBuffer(cmdBuf, nodeMatrices, vkBU::eStorageBuffer);
-
-  // The following is used to find the primitive mesh information in the CHIT
-  std::vector<RtPrimitiveLookup> primLookup;
-  for(auto& primMesh : m_gltfScene.m_primMeshes)
-  {
-    primLookup.push_back({primMesh.firstIndex, primMesh.vertexOffset, primMesh.materialIndex, primMesh.indexCount});
-  }
-  m_rtPrimLookup =
-      m_alloc.createBuffer(cmdBuf, primLookup, vk::BufferUsageFlagBits::eStorageBuffer);
 
 
   // Creates all textures found

@@ -39,6 +39,7 @@
 
 #include "RasterPipeline.h"
 #include "RaytracingPipeline.h"
+#include "animation.h"
 
 //--------------------------------------------------------------------------------------------------
 // Simple rasterizer of OBJ objects
@@ -246,4 +247,9 @@ public:
 	nvvk::Buffer   m_emissiveTrianglesBuffer;
 	std::vector<SamplingAlias> m_triangleAliasTable;
 	nvvk::Buffer m_triangleAliasBuffer;
+
+	// Animations
+	void loadAnimations(tinygltf::Model& document);
+	std::vector<Animation> m_animations;
+	std::vector<nvmath::mat4f> m_instanceMtx;
 };
