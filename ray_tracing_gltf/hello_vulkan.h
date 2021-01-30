@@ -40,6 +40,7 @@
 #include "RasterPipeline.h"
 #include "RaytracingPipeline.h"
 #include "animation.h"
+#include "sceneGraph.h"
 
 //--------------------------------------------------------------------------------------------------
 // Simple rasterizer of OBJ objects
@@ -249,9 +250,11 @@ public:
 	nvvk::Buffer m_triangleAliasBuffer;
 
 	// Animations
-	void loadAnimations(tinygltf::Model& document);
+	void loadAnimations(tinygltf::Model& document, const std::vector<size_t>& gltfNodeToSceneGraph);
 	void playAnimations(std::chrono::duration<float> dt);
+	void loadSceneGraph(std::vector<size_t>& gltfNodeToSceneGraph);
+	tinygltf::Model    m_tmodel;
+	SceneGraph m_sceneGraph;
 	std::vector<Animation> m_animations;
-	std::vector<nvmath::mat4f> m_nodeMtx;
 	std::vector<nvmath::mat4f> m_instanceMtx;
 };

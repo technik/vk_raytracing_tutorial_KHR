@@ -602,7 +602,7 @@ std::vector<vec4f> generateTangentSpace(
 	return tangentVectors;
 }
 
-void HelloVulkan::loadAnimations(tinygltf::Model& document)
+void HelloVulkan::loadAnimations(tinygltf::Model& document, const std::vector<size_t>& gltfNodeToSceneGraph)
 {
 	for (auto& gltfAnim : document.animations)
 	{
@@ -658,16 +658,98 @@ void HelloVulkan::loadAnimations(tinygltf::Model& document)
 			if (posChannel && rotChannel && sclChannel)
 			{
 				auto target = channel.target_node;
-				m_animations.push_back(Animation(*posChannel, *rotChannel, *sclChannel, m_nodeMtx[target]));
+				auto sceneGraphNdx = gltfNodeToSceneGraph[target];
+				auto& sceneGraphNode = m_sceneGraph.nodes[sceneGraphNdx];
+				auto& targetMtx = m_sceneGraph.localMatrix[sceneGraphNode.matrixIndex];
+				m_animations.push_back(Animation(*posChannel, *rotChannel, *sclChannel, targetMtx));
 				break;
 			}
 		}
 	}
 }
 
-
 void HelloVulkan::playAnimations(std::chrono::duration<float> dt)
-{}
+{
+	// Play animations
+	for (auto& anim : m_animations)
+	{
+		anim.advance(dt);
+	}
+
+	// Traverse node hierarchy to compute world matrices
+	m_sceneGraph.recalcWorldMatrices();
+
+	// Update ubos
+}
+
+nvmath::mat4f getLocalMatrix(const tinygltf::Node& tnode)
+{
+	nvmath::mat4f mtranslation{ 1 };
+	nvmath::mat4f mscale{ 1 };
+	nvmath::mat4f mrot{ 1 };
+	nvmath::mat4f matrix{ 1 };
+	nvmath::quatf mrotation;
+
+	if (!tnode.translation.empty())
+		mtranslation.as_translation(nvmath::vec3f(tnode.translation[0], tnode.translation[1], tnode.translation[2]));
+	if (!tnode.scale.empty())
+		mscale.as_scale(nvmath::vec3f(tnode.scale[0], tnode.scale[1], tnode.scale[2]));
+	if (!tnode.rotation.empty())
+	{
+		mrotation[0] = static_cast<float>(tnode.rotation[0]);
+		mrotation[1] = static_cast<float>(tnode.rotation[1]);
+		mrotation[2] = static_cast<float>(tnode.rotation[2]);
+		mrotation[3] = static_cast<float>(tnode.rotation[3]);
+		mrotation.to_matrix(mrot);
+	}
+	if (!tnode.matrix.empty())
+	{
+		for (int i = 0; i < 16; ++i)
+			matrix.mat_array[i] = static_cast<float>(tnode.matrix[i]);
+	}
+	return mtranslation * mrot * mscale * matrix;
+}
+
+void HelloVulkan::loadSceneGraph(std::vector<size_t>& gltfNodeToSceneGraph)
+{
+	// Transforming the scene hierarchy to a flat list
+	int         defaultScene = m_tmodel.defaultScene > -1 ? m_tmodel.defaultScene : 0;
+	const auto& tscene = m_tmodel.scenes[defaultScene];
+
+	std::vector<int> childStack;
+	childStack.reserve(m_tmodel.nodes.size());
+	size_t pullPos = 0;
+
+	for (auto nodeIdx : tscene.nodes)
+	{
+		// Add root node to the stack
+		childStack.push_back(nodeIdx);
+
+		// Process tree
+		while (pullPos < childStack.size())
+		{
+			// Pull node from the stack
+			auto parentNdx = childStack[pullPos];
+			auto& parentNode = m_tmodel.nodes[parentNdx];
+
+			// Create node
+			SceneGraph::Node newNode;
+			newNode.childOffset = childStack.size() - pullPos;
+			newNode.numChildren = parentNode.children.size();
+			newNode.matrixIndex = m_sceneGraph.localMatrix.size();
+			m_sceneGraph.localMatrix.push_back(getLocalMatrix(parentNode));
+			gltfNodeToSceneGraph[parentNdx] = m_sceneGraph.nodes.size();
+			m_sceneGraph.nodes.push_back(newNode);
+
+			// Add children
+			childStack.insert(childStack.end(), parentNode.children.begin(), parentNode.children.end());
+
+			++pullPos;
+		}
+	}
+
+	m_sceneGraph.worldMatrix.resize(m_sceneGraph.localMatrix.size(), mat4f_id);
+}
 
 //--------------------------------------------------------------------------------------------------
 // Loading the OBJ file and setting up all buffers
@@ -677,7 +759,6 @@ void HelloVulkan::loadScene(const std::string& filename)
 	if (filename.size() < 5) // Need a filename with extension
 		return;
   using vkBU = vk::BufferUsageFlagBits;
-  tinygltf::Model    tmodel;
   tinygltf::TinyGLTF tcontext;
   std::string        warn, error;
 
@@ -685,7 +766,7 @@ void HelloVulkan::loadScene(const std::string& filename)
   auto timer = std::chrono::high_resolution_clock();
   auto t0    = timer.now();
   bool loadSuccess =
-	  isBinaryFile(filename) ? tcontext.LoadBinaryFromFile(&tmodel, &error, &warn, filename) : tcontext.LoadASCIIFromFile(&tmodel, &error, &warn, filename);
+	  isBinaryFile(filename) ? tcontext.LoadBinaryFromFile(&m_tmodel, &error, &warn, filename) : tcontext.LoadASCIIFromFile(&m_tmodel, &error, &warn, filename);
   if(!loadSuccess)
   {
     assert(!"Error while loading scene");
@@ -697,7 +778,7 @@ void HelloVulkan::loadScene(const std::string& filename)
   LOGW(warn.c_str());
   LOGE(error.c_str());
 
-  m_gltfScene.importDrawableNodes(tmodel,
+  m_gltfScene.importDrawableNodes(m_tmodel,
 	  nvh::GltfAttributes::Normal | nvh::GltfAttributes::Texcoord_0 | nvh::GltfAttributes::Tangent);
 
   // Create the buffers on Device and copy vertices, indices and materials
@@ -735,13 +816,16 @@ void HelloVulkan::loadScene(const std::string& filename)
                                     vkBU::eVertexBuffer | vkBU::eStorageBuffer);
 
   // Instance Matrices used by rasterizer
-  for(auto& node : m_gltfScene.m_nodes)
+  std::vector<size_t> gltfToSceneGraph(m_tmodel.nodes.size());
+  loadSceneGraph(gltfToSceneGraph);
+  m_sceneGraph.recalcWorldMatrices();
+  for (auto& node : m_gltfScene.m_nodes)
   {
 	  m_instanceMtx.emplace_back(node.worldMatrix);
   }
   m_matrixBuffer = m_alloc.createBuffer(cmdBuf, m_instanceMtx, vkBU::eStorageBuffer);
-  m_nodeMtx.resize(tmodel.nodes.size());
-  loadAnimations(tmodel);
+  //m_matrixBuffer = m_alloc.createBuffer(cmdBuf, m_sceneGraph.worldMatrix, vkBU::eStorageBuffer);
+  loadAnimations(m_tmodel, gltfToSceneGraph);
 
   // The following is used to find the primitive mesh information in the CHIT
   std::vector<RtPrimitiveLookup> primLookup;
@@ -752,7 +836,7 @@ void HelloVulkan::loadScene(const std::string& filename)
   m_rtPrimLookup =
       m_alloc.createBuffer(cmdBuf, primLookup, vk::BufferUsageFlagBits::eStorageBuffer);
 
-  m_gltfScene.importMaterials(tmodel);
+  m_gltfScene.importMaterials(m_tmodel);
   buildLightTables(cmdBuf);
   // Copying all materials, only the elements we need
   std::vector<GltfShadeMaterial> shadeMaterials;
@@ -773,7 +857,7 @@ void HelloVulkan::loadScene(const std::string& filename)
 
 
   // Creates all textures found
-  createTextureImages(cmdBuf, tmodel);
+  createTextureImages(cmdBuf, m_tmodel);
   cmdBufGet.submitAndWait(cmdBuf);
   m_alloc.finalizeAndReleaseStaging();
 
@@ -791,7 +875,7 @@ void HelloVulkan::loadScene(const std::string& filename)
   if (!m_gltfScene.m_cameras.empty())
   {
 	  // Load first camera by default
-	  auto& sceneCam = tmodel.cameras.front();
+	  auto& sceneCam = m_tmodel.cameras.front();
 	  CameraManip.setFov(sceneCam.perspective.yfov * 180 / 3.14159265f);
 	  CameraManip.setMatrix(m_gltfScene.m_cameras.front().worldMatrix);
   }
