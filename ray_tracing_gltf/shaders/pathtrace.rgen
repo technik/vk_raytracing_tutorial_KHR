@@ -16,6 +16,7 @@ layout(set = 0, binding = 3, rgba16f) readonly uniform image2D gBufferBaseColor;
 layout(set = 0, binding = 4, rgba16f) readonly uniform image2D gBufferNormals;
 layout(set = 0, binding = 5, rgba8) readonly uniform image2D gBufferPbr;
 layout(set = 0, binding = 6, rgba16f) readonly uniform image2D gBufferEmissive;
+layout(set = 0, binding = 7) uniform sampler2D gBufferDepth;
 
 // For light sampling
 layout(set = 1, binding = B_MATRICES) readonly buffer _Matrix { mat4 matrices[]; };
@@ -540,8 +541,8 @@ void main()
 	}
 
 	rayAccumLight = max(vec3(0), rayAccumLight) / pushC.numPathsPerPixel;
-	//rayAccumLight = imageLoad(gBufferBaseColor, ivec2(gl_LaunchIDEXT.xy)).xyz;
-	//rayAccumLight = rayAccumLight*0.5+0.5;
+	float pxlDepth = texelFetch(gBufferDepth, ivec2(gl_LaunchIDEXT.xy), 0).x;
+	rayAccumLight = vec3(abs(pxlDepth)==0?vec3(1,0,0):vec3(0,0,1));
 
 	// Do accumulation over time
 	if(pushC.frame > 0)

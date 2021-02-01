@@ -1058,6 +1058,29 @@ void HelloVulkan::rasterizeGBuffer(const vk::CommandBuffer& cmdBuf)
 
 	m_debug.beginLabel(cmdBuf, "Rasterize GBuffer");
 
+	vk::ClearValue clearValues[5];
+	nvmath::vec4f clearColor = nvmath::vec4f(0, 0, 0, 1.f);
+	clearValues[0].setColor(std::array<float, 4>({ clearColor[0], clearColor[1], clearColor[2], clearColor[3] }));
+	clearValues[1].setColor(std::array<float, 4>({ clearColor[0], clearColor[1], clearColor[2], clearColor[3] }));
+	clearValues[2].setColor(std::array<float, 4>({ clearColor[0], clearColor[1], clearColor[2], clearColor[3] }));
+	clearValues[3].setColor(std::array<float, 4>({ clearColor[0], clearColor[1], clearColor[2], clearColor[3] }));
+	clearValues[4].setDepthStencil({ 1.0f, 0 });
+
+	vk::RenderPassBeginInfo offscreenRenderPassBeginInfo;
+	offscreenRenderPassBeginInfo.setClearValueCount(5);
+	offscreenRenderPassBeginInfo.setPClearValues(clearValues);
+	offscreenRenderPassBeginInfo.setRenderPass(m_gBufferRenderPass);
+	offscreenRenderPassBeginInfo.setFramebuffer(m_gBufferFramebuffer);
+	offscreenRenderPassBeginInfo.setRenderArea({ {}, getSize() });
+
+	nvvk::cmdBarrierImageLayout(cmdBuf,
+		m_offscreenDepth.image,
+		vk::ImageLayout::eGeneral,
+		vk::ImageLayout::eDepthStencilAttachmentOptimal,
+		vk::ImageAspectFlagBits::eDepth);
+
+	cmdBuf.beginRenderPass(offscreenRenderPassBeginInfo, vk::SubpassContents::eInline);
+
 	// Dynamic Viewport
 	cmdBuf.setViewport(0, { vk::Viewport(0, 0, (float)m_size.width, (float)m_size.height, 0, 1) });
 	cmdBuf.setScissor(0, { {{0, 0}, {m_size.width, m_size.height}} });
@@ -1086,6 +1109,13 @@ void HelloVulkan::rasterizeGBuffer(const vk::CommandBuffer& cmdBuf)
 			m_pushConstant);
 		cmdBuf.drawIndexed(primitive.indexCount, 1, primitive.firstIndex, primitive.vertexOffset, 0);
 	}
+
+	cmdBuf.endRenderPass();
+
+	nvvk::cmdBarrierImageLayout(cmdBuf,
+		m_offscreenDepth.image,
+		vk::ImageLayout::eDepthStencilAttachmentOptimal,
+		vk::ImageLayout::eGeneral);
 
 	m_debug.endLabel(cmdBuf);
 }
@@ -1142,7 +1172,9 @@ void HelloVulkan::createOffscreenRender()
   // Creating the depth buffer
   auto depthCreateInfo =
       nvvk::makeImage2DCreateInfo(m_size, m_offscreenDepthFormat,
-                                  vk::ImageUsageFlagBits::eDepthStencilAttachment);
+		vk::ImageUsageFlagBits::eDepthStencilAttachment
+		| vk::ImageUsageFlagBits::eSampled
+	  );
   {
 	  m_alloc.destroy(m_offscreenDepth);
     nvvk::Image image = m_alloc.createImage(depthCreateInfo);
@@ -1153,11 +1185,15 @@ void HelloVulkan::createOffscreenRender()
     depthStencilView.setSubresourceRange({vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1});
     depthStencilView.setImage(image.image);
 
-    m_offscreenDepth = m_alloc.createTexture(image, depthStencilView);
+	vk::SamplerCreateInfo samplerCreateInfo{
+		{}, vk::Filter::eNearest, vk::Filter::eNearest, vk::SamplerMipmapMode::eNearest };
+	samplerCreateInfo.setMaxLod(0);
+
+    m_offscreenDepth = m_alloc.createTexture(image, depthStencilView, samplerCreateInfo);
 
     // Setting the image layout for depth
     nvvk::cmdBarrierImageLayout(cmdBuf, m_offscreenDepth.image, vk::ImageLayout::eUndefined,
-                                vk::ImageLayout::eDepthStencilAttachmentOptimal,
+                                vk::ImageLayout::eGeneral,
                                 vk::ImageAspectFlagBits::eDepth);
 
   }
@@ -1424,6 +1460,8 @@ void HelloVulkan::createRtDescriptorSet()
 	  vkDSLB(5, vkDT::eStorageImage, 1, vkSS::eRaygenKHR));  // G-Buffer pbr
   m_rtDescSetLayoutBind.addBinding(
 	  vkDSLB(6, vkDT::eStorageImage, 1, vkSS::eRaygenKHR));  // G-Buffer emissive
+  m_rtDescSetLayoutBind.addBinding(
+	  vkDSLB(7, vkDT::eCombinedImageSampler, 1, vkSS::eRaygenKHR));  // G-Buffer depth
 
   m_rtDescPool      = m_rtDescSetLayoutBind.createPool(m_device);
   m_rtDescSetLayout = m_rtDescSetLayoutBind.createLayout(m_device);
@@ -1439,7 +1477,8 @@ void HelloVulkan::createRtDescriptorSet()
   vk::DescriptorImageInfo normalsInfo{ {}, m_normalsRT.descriptor.imageView, vk::ImageLayout::eGeneral };
   vk::DescriptorImageInfo pbrInfo{ {}, m_pbrRT.descriptor.imageView, vk::ImageLayout::eGeneral };
   vk::DescriptorImageInfo emissiveInfo{ {}, m_emissiveRT.descriptor.imageView, vk::ImageLayout::eGeneral};
-
+  vk::DescriptorImageInfo depthInfo = m_offscreenDepth.descriptor;
+  
   std::vector<vk::WriteDescriptorSet> writes;
   writes.emplace_back(m_rtDescSetLayoutBind.makeWrite(m_rtDescSet, 0, &descASInfo));
   writes.emplace_back(m_rtDescSetLayoutBind.makeWrite(m_rtDescSet, 1, &imageInfo));
@@ -1448,6 +1487,7 @@ void HelloVulkan::createRtDescriptorSet()
   writes.emplace_back(m_rtDescSetLayoutBind.makeWrite(m_rtDescSet, 4, &normalsInfo));
   writes.emplace_back(m_rtDescSetLayoutBind.makeWrite(m_rtDescSet, 5, &pbrInfo));
   writes.emplace_back(m_rtDescSetLayoutBind.makeWrite(m_rtDescSet, 6, &emissiveInfo));
+  writes.emplace_back(m_rtDescSetLayoutBind.makeWrite(m_rtDescSet, 7, &depthInfo));
   m_device.updateDescriptorSets(static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 }
 
@@ -1468,12 +1508,14 @@ void HelloVulkan::updateRtDescriptorSet()
   vk::DescriptorImageInfo normalsInfo{ {}, m_normalsRT.descriptor.imageView, vk::ImageLayout::eGeneral };
   vk::DescriptorImageInfo pbrInfo{ {}, m_pbrRT.descriptor.imageView, vk::ImageLayout::eGeneral };
   vk::DescriptorImageInfo emissiveInfo{ {}, m_emissiveRT.descriptor.imageView, vk::ImageLayout::eGeneral };
+  vk::DescriptorImageInfo depthInfo = m_offscreenDepth.descriptor;
   std::vector<vk::WriteDescriptorSet> wds{
 		  {m_rtDescSet, 1, 0, 1, vkDT::eStorageImage, &imageInfo },
 		  {m_rtDescSet, 3, 0, 1, vkDT::eStorageImage,&baseColorInfo },
 		  {m_rtDescSet, 4, 0, 1, vkDT::eStorageImage,&normalsInfo },
 		  {m_rtDescSet, 5, 0, 1, vkDT::eStorageImage, &pbrInfo },
-		  {m_rtDescSet, 6, 0, 1, vkDT::eStorageImage, &emissiveInfo }
+		  {m_rtDescSet, 6, 0, 1, vkDT::eStorageImage, &emissiveInfo },
+		  {m_rtDescSet, 7, 0, 1, vkDT::eCombinedImageSampler, &depthInfo }
   };
   m_device.updateDescriptorSets(wds, nullptr);
 }
