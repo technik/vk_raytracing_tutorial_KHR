@@ -50,6 +50,7 @@ FragmentInfo sampleMaterial(int matIndex, in vec2 texcoord0, in vec3 msNormal, i
   if(matIndex >= 0)
     {
         GltfShadeMaterial mat = materials[nonuniformEXT(matIndex)];
+        texcoord0 = texcoord0*mat.scale+mat.offset;
         // Emissive color
         result.emittance = mat.emissiveFactor;
         if(mat.emissiveTexture > -1)
@@ -65,6 +66,7 @@ FragmentInfo sampleMaterial(int matIndex, in vec2 texcoord0, in vec3 msNormal, i
             result.baseColor *= texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
         }
 
+        /*
         if(mat.normalTexture >= 0)
         {
             vec3 msBitangent = cross(msNormal, msTangent.xyz) * msTangent.w;
@@ -75,8 +77,9 @@ FragmentInfo sampleMaterial(int matIndex, in vec2 texcoord0, in vec3 msNormal, i
             vec3 tsNormal = texture(texturesMap[nonuniformEXT(txtId)], texcoord0).xyz;
             tsNormal = pow(tsNormal, vec3(1/2.2)) + vec3(0,0,1e-2);
             tsNormal = normalize(tsNormal * 255.0 - 127.0);
-            result.msNormal = normalize(modelFromTangent * tsNormal);
+            //result.msNormal = normalize(modelFromTangent * tsNormal);
         }
+        */
 
         // Encode transmission in baseColor's alpha
         /*float transmissionFactor = mat.transmissionFactor;

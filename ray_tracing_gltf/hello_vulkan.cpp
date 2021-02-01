@@ -842,6 +842,13 @@ void HelloVulkan::loadScene(const std::string& filename)
   std::vector<GltfShadeMaterial> shadeMaterials;
   for (auto& m : m_gltfScene.m_materials)
   {
+	  vec2 scale;
+	  scale.x = m.uvTransform.a00;
+	  scale.y = m.uvTransform.a11;
+	  vec2 offset;
+	  offset.x = m.uvTransform.a02;
+	  offset.y = m.uvTransform.a12;
+
 	  shadeMaterials.emplace_back(
 		  GltfShadeMaterial{
 			m.pbrBaseColorFactor,
@@ -851,7 +858,10 @@ void HelloVulkan::loadScene(const std::string& filename)
 			m.normalTexture,
 			m.pbrMetallicRoughnessTexture,
 			m.pbrRoughnessFactor,
-			m.pbrMetallicFactor });
+			m.pbrMetallicFactor,
+			scale,
+			offset
+		  });
   }
   m_materialBuffer = m_alloc.createBuffer(cmdBuf, shadeMaterials, vkBU::eStorageBuffer);
 
@@ -1086,6 +1096,7 @@ void HelloVulkan::rasterizeGBuffer(const vk::CommandBuffer& cmdBuf)
 void HelloVulkan::onResize(int /*w*/, int /*h*/)
 {
   createOffscreenRender();
+  createGBufferRender();
   updatePostDescriptorSet();
   updateRtDescriptorSet();
   resetFrame();
@@ -1403,8 +1414,16 @@ void HelloVulkan::createRtDescriptorSet()
                                           vkSS::eRaygenKHR | vkSS::eClosestHitKHR));  // TLAS
   m_rtDescSetLayoutBind.addBinding(
       vkDSLB(1, vkDT::eStorageImage, 1, vkSS::eRaygenKHR));  // Output image
-  m_rtDescSetLayoutBind.addBinding(vkDSLB(
-      2, vkDT::eStorageBuffer, 1, vkSS::eRaygenKHR | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));  // Primitive info
+  m_rtDescSetLayoutBind.addBinding(
+	  vkDSLB(2, vkDT::eStorageBuffer, 1, vkSS::eRaygenKHR | vkSS::eClosestHitKHR | vkSS::eAnyHitKHR));  // Primitive info
+  m_rtDescSetLayoutBind.addBinding(
+	  vkDSLB(3, vkDT::eStorageImage, 1, vkSS::eRaygenKHR));  // G-Buffer base color
+  m_rtDescSetLayoutBind.addBinding(
+	  vkDSLB(4, vkDT::eStorageImage, 1, vkSS::eRaygenKHR));  // G-Buffer normals
+  m_rtDescSetLayoutBind.addBinding(
+	  vkDSLB(5, vkDT::eStorageImage, 1, vkSS::eRaygenKHR));  // G-Buffer pbr
+  m_rtDescSetLayoutBind.addBinding(
+	  vkDSLB(6, vkDT::eStorageImage, 1, vkSS::eRaygenKHR));  // G-Buffer emissive
 
   m_rtDescPool      = m_rtDescSetLayoutBind.createPool(m_device);
   m_rtDescSetLayout = m_rtDescSetLayoutBind.createLayout(m_device);
@@ -1414,14 +1433,21 @@ void HelloVulkan::createRtDescriptorSet()
   vk::WriteDescriptorSetAccelerationStructureKHR descASInfo;
   descASInfo.setAccelerationStructureCount(1);
   descASInfo.setPAccelerationStructures(&tlas);
-  vk::DescriptorImageInfo imageInfo{
-      {}, m_offscreenColor.descriptor.imageView, vk::ImageLayout::eGeneral};
+  vk::DescriptorImageInfo imageInfo{ {}, m_offscreenColor.descriptor.imageView, vk::ImageLayout::eGeneral };
   vk::DescriptorBufferInfo primitiveInfoDesc{m_rtPrimLookup.buffer, 0, VK_WHOLE_SIZE};
+  vk::DescriptorImageInfo baseColorInfo{ {}, m_baseColorRT.descriptor.imageView, vk::ImageLayout::eGeneral };
+  vk::DescriptorImageInfo normalsInfo{ {}, m_normalsRT.descriptor.imageView, vk::ImageLayout::eGeneral };
+  vk::DescriptorImageInfo pbrInfo{ {}, m_pbrRT.descriptor.imageView, vk::ImageLayout::eGeneral };
+  vk::DescriptorImageInfo emissiveInfo{ {}, m_emissiveRT.descriptor.imageView, vk::ImageLayout::eGeneral};
 
   std::vector<vk::WriteDescriptorSet> writes;
   writes.emplace_back(m_rtDescSetLayoutBind.makeWrite(m_rtDescSet, 0, &descASInfo));
   writes.emplace_back(m_rtDescSetLayoutBind.makeWrite(m_rtDescSet, 1, &imageInfo));
   writes.emplace_back(m_rtDescSetLayoutBind.makeWrite(m_rtDescSet, 2, &primitiveInfoDesc));
+  writes.emplace_back(m_rtDescSetLayoutBind.makeWrite(m_rtDescSet, 3, &baseColorInfo));
+  writes.emplace_back(m_rtDescSetLayoutBind.makeWrite(m_rtDescSet, 4, &normalsInfo));
+  writes.emplace_back(m_rtDescSetLayoutBind.makeWrite(m_rtDescSet, 5, &pbrInfo));
+  writes.emplace_back(m_rtDescSetLayoutBind.makeWrite(m_rtDescSet, 6, &emissiveInfo));
   m_device.updateDescriptorSets(static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 }
 
@@ -1437,7 +1463,18 @@ void HelloVulkan::updateRtDescriptorSet()
   // (1) Output buffer
   vk::DescriptorImageInfo imageInfo{
       {}, m_offscreenColor.descriptor.imageView, vk::ImageLayout::eGeneral};
-  vk::WriteDescriptorSet wds{m_rtDescSet, 1, 0, 1, vkDT::eStorageImage, &imageInfo};
+  vk::DescriptorBufferInfo primitiveInfoDesc{ m_rtPrimLookup.buffer, 0, VK_WHOLE_SIZE };
+  vk::DescriptorImageInfo baseColorInfo{ {}, m_baseColorRT.descriptor.imageView, vk::ImageLayout::eGeneral };
+  vk::DescriptorImageInfo normalsInfo{ {}, m_normalsRT.descriptor.imageView, vk::ImageLayout::eGeneral };
+  vk::DescriptorImageInfo pbrInfo{ {}, m_pbrRT.descriptor.imageView, vk::ImageLayout::eGeneral };
+  vk::DescriptorImageInfo emissiveInfo{ {}, m_emissiveRT.descriptor.imageView, vk::ImageLayout::eGeneral };
+  std::vector<vk::WriteDescriptorSet> wds{
+		  {m_rtDescSet, 1, 0, 1, vkDT::eStorageImage, &imageInfo },
+		  {m_rtDescSet, 3, 0, 1, vkDT::eStorageImage,&baseColorInfo },
+		  {m_rtDescSet, 4, 0, 1, vkDT::eStorageImage,&normalsInfo },
+		  {m_rtDescSet, 5, 0, 1, vkDT::eStorageImage, &pbrInfo },
+		  {m_rtDescSet, 6, 0, 1, vkDT::eStorageImage, &emissiveInfo }
+  };
   m_device.updateDescriptorSets(wds, nullptr);
 }
 

@@ -65,10 +65,10 @@ static void onErrorCallback(int error, const char* description)
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
-//static int const SAMPLE_WIDTH  = 2560;
-//static int const SAMPLE_HEIGHT = 1440;
-static int const SAMPLE_WIDTH = 1920;
-static int const SAMPLE_HEIGHT = 1080;
+static int const SAMPLE_WIDTH  = 2560;
+static int const SAMPLE_HEIGHT = 1440;
+//static int const SAMPLE_WIDTH = 1920;
+//static int const SAMPLE_HEIGHT = 1080;
 //static int const SAMPLE_WIDTH = 1280;
 //static int const SAMPLE_HEIGHT = 720;
 
@@ -183,6 +183,10 @@ int main(int argc, char** argv)
   helloVk.createUniformBuffer();
   helloVk.updateDescriptorSet();
 
+  // Init gBuffer pass
+  helloVk.createGBufferRender();
+  helloVk.createGBufferPipeline();
+
   // #VKRay
   helloVk.initRayTracing();
   helloVk.createBottomLevelAS();
@@ -193,11 +197,6 @@ int main(int argc, char** argv)
   helloVk.createPostDescriptor();
   helloVk.createPostPipeline();
   helloVk.updatePostDescriptorSet();
-
-  // Init gBuffer pass
-  helloVk.createGBufferRender();
-  helloVk.createGBufferPipeline();
-
 
   nvmath::vec4f clearColor   = nvmath::vec4f(1, 1, 1, 1.00f);
   bool          useRaytracer = true;
@@ -281,9 +280,9 @@ int main(int argc, char** argv)
 		offscreenRenderPassBeginInfo.setFramebuffer(helloVk.m_gBufferFramebuffer);
 		offscreenRenderPassBeginInfo.setRenderArea({ {}, helloVk.getSize() });
 
-		//cmdBuf.beginRenderPass(offscreenRenderPassBeginInfo, vk::SubpassContents::eInline);
-		//helloVk.rasterizeGBuffer(cmdBuf);
-		//cmdBuf.endRenderPass();
+		cmdBuf.beginRenderPass(offscreenRenderPassBeginInfo, vk::SubpassContents::eInline);
+		helloVk.rasterizeGBuffer(cmdBuf);
+		cmdBuf.endRenderPass();
 		// Direct light rays
 		helloVk.raytrace(cmdBuf, clearColor);
 	}

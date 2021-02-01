@@ -49,15 +49,15 @@ out gl_PerVertex
 void main()
 {
   mat4 objMatrix   = matrices[pushC.instanceId];
-  mat4 objMatrixIT = transpose(inverse(objMatrix));
+  mat4 objMatrixInv = inverse(objMatrix);
 
   vec3 origin = vec3(ubo.viewI * vec4(0, 0, 0, 1));
 
   worldPos     = vec3(objMatrix * vec4(inPosition, 1.0));
   viewDir      = vec3(worldPos - origin);
   fragTexCoord = inTexCoord;
-  fragNormal   = vec3(objMatrixIT * vec4(inNormal, 0.0));
-  fragTan.xyz   = vec3(objMatrixIT * vec4(inTangent.xyz, 0.0));
+  fragNormal   = normalize(vec3(vec4(inNormal, 0.0) * objMatrixInv));
+  fragTan.xyz   = normalize(vec3(vec4(inTangent.xyz, 0.0) * objMatrixInv));
   fragTan.w = inTangent.w;
   //  matIndex     = inMatID;
 

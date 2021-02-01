@@ -11,6 +11,8 @@ struct GltfShadeMaterial
   int   pbrMetallicRoughnessTexture;
   float roughness;
   float metallic;
+  vec2 offset;
+  vec2 scale;
   int padding[3];
 };
 

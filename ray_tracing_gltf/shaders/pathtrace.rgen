@@ -12,6 +12,10 @@
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
 layout(set = 0, binding = 1, rgba32f) uniform image2D image;
 layout(set = 0, binding = 2) readonly buffer _InstanceInfo {PrimMeshInfo primInfo[];};
+layout(set = 0, binding = 3, rgba16f) readonly uniform image2D gBufferBaseColor;
+layout(set = 0, binding = 4, rgba16f) readonly uniform image2D gBufferNormals;
+layout(set = 0, binding = 5, rgba8) readonly uniform image2D gBufferPbr;
+layout(set = 0, binding = 6, rgba16f) readonly uniform image2D gBufferEmissive;
 
 // For light sampling
 layout(set = 1, binding = B_MATRICES) readonly buffer _Matrix { mat4 matrices[]; };
@@ -536,6 +540,8 @@ void main()
 	}
 
 	rayAccumLight = max(vec3(0), rayAccumLight) / pushC.numPathsPerPixel;
+	//rayAccumLight = imageLoad(gBufferBaseColor, ivec2(gl_LaunchIDEXT.xy)).xyz;
+	//rayAccumLight = rayAccumLight*0.5+0.5;
 
 	// Do accumulation over time
 	if(pushC.frame > 0)

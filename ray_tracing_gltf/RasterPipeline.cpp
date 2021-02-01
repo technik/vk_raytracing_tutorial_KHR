@@ -65,6 +65,7 @@ bool RasterPipeline::tryLoadPipeline()
 	std::vector<std::string>                paths = defaultSearchPaths;
 	nvvk::GraphicsPipelineGeneratorCombined gpb(m_device, m_pipelineLayout, m_renderPass);
 	gpb.setBlendAttachmentCount(4);
+	gpb.rasterizationState.cullMode = vk::CullModeFlagBits::eNone;
 	vk::PipelineColorBlendAttachmentState blendState;
 	blendState.blendEnable = false;
 	blendState.colorWriteMask =
@@ -89,6 +90,7 @@ bool RasterPipeline::tryLoadPipeline()
 		{2, 2, vk::Format::eR32G32B32A32Sfloat, 0},	// Tangent
 		{3, 3, vk::Format::eR32G32Sfloat, 0},		// Texcoord0
 		});
+	
 	vk::Pipeline newPipeline = gpb.createPipeline();
 	if (newPipeline)
 	{
